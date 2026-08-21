@@ -15,7 +15,7 @@ namespace ScenarioGraphSystem
         private bool completed;
 
         /// <summary>ゲーム設定に従い、指定時間後に終了結果を1回だけ返します。</summary>
-        public void StartGame(SentenceData definition, Action<string> onCompleted)
+        public void StartGame(ScriptableObject definition, Action<string> onCompleted)
         {
             if (completionCoroutine != null)
                 StopCoroutine(completionCoroutine);

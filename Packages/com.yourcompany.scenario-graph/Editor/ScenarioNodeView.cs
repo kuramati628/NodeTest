@@ -117,9 +117,13 @@ namespace ScenarioGraphSystem.Editor
             }));
             extensionContainer.Add(popup);
 
-            var definitionField = new ObjectField("Sentence Data") { objectType = typeof(SentenceData), value = Data.SentenceData, allowSceneObjects = false };
-            definitionField.RegisterValueChangedCallback(evt => owner.SetSentenceData(Data.Guid, evt.newValue as SentenceData));
-            extensionContainer.Add(definitionField);
+            var dataField = new ObjectField("Attached Data") { objectType = typeof(ScriptableObject), value = Data.AttachedData, allowSceneObjects = false };
+            dataField.RegisterValueChangedCallback(evt => owner.SetAttachedData(Data.Guid, evt.newValue as ScriptableObject));
+            extensionContainer.Add(dataField);
+
+            var resolverField = new ObjectField("Branch Resolver") { objectType = typeof(ScenarioBranchResolver), value = Data.BranchResolver, allowSceneObjects = false };
+            resolverField.RegisterValueChangedCallback(evt => owner.SetBranchResolver(Data.Guid, evt.newValue as ScenarioBranchResolver));
+            extensionContainer.Add(resolverField);
             var debugButton = new Button(() => owner.DebugNode(Data.Guid)) { text = "このゲームをデバッグ" };
             debugButton.SetEnabled(!EditorApplication.isPlayingOrWillChangePlaymode);
             extensionContainer.Add(debugButton);

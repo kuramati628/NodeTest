@@ -37,7 +37,7 @@ Packages/com.yourcompany.scenario-spreadsheet/Editor/
 ScenarioGraph
  ├─ List<NodeData>
  │   ├─ ScenarioDefinition → TextAsset (Scenario)
- │   └─ GameRegistry + gameId + SentenceData + OutputPortData[] (Game)
+ │   └─ GameRegistry + gameId + ScriptableObject + Branch Resolver + OutputPortData[] (Game)
  ├─ List<EdgeData> ── outputNodeGuid/outputPortGuid → inputNodeGuid
  ├─ List<GroupData>
  ├─ List<CommentData>
@@ -59,11 +59,11 @@ Runner.OnGameLoaded ── Observable<ScenarioGameLoadedEvent>
 3. ツールバーの「開始」と「終了」で、それぞれのノードを1個ずつ作ります。
 4. 「シナリオ」「ゲーム」を追加し、右側出力から左側入力へ接続します。
 5. `Scenario Definition` を作成してCSVを設定し、シナリオノードから参照します。
-6. ゲームノードではGameRegistry、ゲーム、SentenceDataを選びます。出力ポートはSentenceData内の分岐enumから自動生成されます。
+6. ゲームノードではGameRegistry、ゲーム、既存のScriptableObjectアセットを選びます。出力ポートはアタッチデータから解決した分岐で自動生成されます。
 7. 「検証」で下部のエラー一覧を確認し、「保存」でアセットを保存します。
 
-`SentenceData`内にenumが1種類だけなら自動検出されます。複数のenumを持つ場合は、分岐に使うenum型、フィールド、
-またはプロパティへ`[SentenceBranchEnum]`を付けてください。enumメンバー名がそのまま出力ポート名になります。
+アタッチ先が`SentenceData`なら従来どおり分岐を取得します。既存ScriptableObjectがenumを1種類だけ持つ場合も自動検出され、enumメンバー名が出力ポート名になります。
+複数enumなどで自動解決できない型は、ノードの`Branch Resolver`へ専用Resolverアセットを設定してください。
 
 右クリックからもノード、グループ、コメントを作成できます。`Ctrl/Cmd+C` と `Ctrl/Cmd+V`、Delete、ズーム、パンはGraphView標準操作です。検索欄はノード名、CSV名、ゲーム名、コメント本文、グループ名を対象にします。グループを削除しても内部ノードは削除されません。
 
@@ -92,11 +92,26 @@ public sealed class SampleSentenceData : SentenceData
 
 public sealed class SampleGame : MonoBehaviour, IScenarioGame
 {
-    public void StartGame(SentenceData definition, Action<string> onCompleted)
+    public void StartGame(ScriptableObject definition, Action<string> onCompleted)
     {
         var settings = (SampleSentenceData)definition;
         // ゲーム終了時に必ず1回だけ呼び出します。
         onCompleted(SampleResult.Success.ToString());
+    }
+}
+```
+
+既存のScriptableObjectを変更せず分岐を取り出したい場合は、次のようなResolverを作成してノードへ設定します。
+
+```csharp
+[CreateAssetMenu(menuName = "Scenario/Imported Data Resolver")]
+public sealed class ImportedDataResolver : ScenarioBranchResolver
+{
+    public override bool CanResolve(ScriptableObject data) => data is ImportedGameData;
+
+    public override IReadOnlyList<string> GetBranchNames(ScriptableObject data)
+    {
+        return ((ImportedGameData)data).branches;
     }
 }
 ```
@@ -165,7 +180,7 @@ CSVはImport Profileで指定した同一パスへ上書きされます。この
 ## モックによるPlay Mode接続確認
 
 シナリオノードとゲームノードには単体デバッグボタンがあります。ボタンはPlay Mode外でのみ実行できます。
-ゲームノードは登録済みのゲームSceneを読み込んでPlay Modeを開始し、設定済みの`SentenceData`をそのSceneの`IScenarioGame`へ渡します。
+ゲームノードは登録済みのゲームSceneを読み込んでPlay Modeを開始し、設定済みのアタッチデータをそのSceneの`IScenarioGame`へ渡します。
 シナリオノードは現在開いているSceneでPlay Modeを開始し、`IScenarioGraphDebugHost`へ対象ノードを渡します。
 デモの`ScenarioGraphMockRunner`はこのインターフェースを実装済みです。
 

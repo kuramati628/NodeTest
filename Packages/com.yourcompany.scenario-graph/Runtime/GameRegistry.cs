@@ -56,6 +56,111 @@ namespace ScenarioGraphSystem
         }
     }
 
+    /// <summary>既存ScriptableObjectからゲーム分岐名を解決する拡張ポイントです。</summary>
+    public abstract class ScenarioBranchResolver : ScriptableObject
+    {
+        public abstract bool CanResolve(ScriptableObject data);
+        public abstract IReadOnlyList<string> GetBranchNames(ScriptableObject data);
+    }
+
+    /// <summary>標準データ、単一enum、または明示指定Resolverから分岐名を取得します。</summary>
+    public static class ScenarioBranchResolverUtility
+    {
+        public static bool TryGetBranchNames(ScriptableObject data, ScenarioBranchResolver resolver,
+            out IReadOnlyList<string> branchNames, out string error)
+        {
+            branchNames = Array.Empty<string>();
+            error = string.Empty;
+            if (data == null)
+            {
+                error = "アタッチデータが設定されていません。";
+                return false;
+            }
+
+            try
+            {
+                if (resolver != null)
+                {
+                    if (!resolver.CanResolve(data))
+                    {
+                        error = $"Resolver『{resolver.name}』はデータ『{data.name}』を処理できません。";
+                        return false;
+                    }
+                    branchNames = Normalize(resolver.GetBranchNames(data));
+                }
+                else if (data is SentenceData sentenceData)
+                {
+                    branchNames = Normalize(sentenceData.GetBranchNames());
+                }
+                else if (!TryGetImplicitBranches(data, out branchNames, out error))
+                {
+                    return false;
+                }
+            }
+            catch (Exception exception)
+            {
+                error = $"分岐の取得に失敗しました: {exception.Message}";
+                return false;
+            }
+
+            if (branchNames.Count == 0)
+            {
+                error = $"データ『{data.name}』に有効な分岐がありません。";
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryGetImplicitBranches(ScriptableObject data, out IReadOnlyList<string> branchNames, out string error)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var type = data.GetType();
+            var attributedEnumTypes = type.GetFields(flags)
+                .Where(field => field.FieldType.IsEnum && field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                .Select(field => field.FieldType)
+                .Concat(type.GetProperties(flags).Where(property => property.PropertyType.IsEnum &&
+                    property.GetCustomAttribute<SentenceBranchEnumAttribute>() != null).Select(property => property.PropertyType))
+                .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum &&
+                    nested.GetCustomAttribute<SentenceBranchEnumAttribute>() != null))
+                .Distinct().ToList();
+            if (attributedEnumTypes.Count == 1)
+            {
+                branchNames = Enum.GetNames(attributedEnumTypes[0]);
+                error = string.Empty;
+                return true;
+            }
+            if (attributedEnumTypes.Count > 1)
+            {
+                branchNames = Array.Empty<string>();
+                error = $"データ『{data.name}』に分岐指定されたenumが複数あります。Resolverを設定してください。";
+                return false;
+            }
+
+            var enumTypes = type.GetFields(flags).Where(field => field.FieldType.IsEnum).Select(field => field.FieldType)
+                .Concat(type.GetProperties(flags).Where(property => property.PropertyType.IsEnum).Select(property => property.PropertyType))
+                .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum))
+                .Distinct().ToList();
+            if (enumTypes.Count == 1)
+            {
+                branchNames = Enum.GetNames(enumTypes[0]);
+                error = string.Empty;
+                return true;
+            }
+
+            branchNames = Array.Empty<string>();
+            error = enumTypes.Count == 0
+                ? $"データ『{data.name}』に分岐enumがありません。Resolverを設定してください。"
+                : $"データ『{data.name}』に複数のenumがあります。Resolverを設定してください。";
+            return false;
+        }
+
+        private static IReadOnlyList<string> Normalize(IReadOnlyList<string> source)
+        {
+            return (source ?? Array.Empty<string>()).Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim()).Distinct().ToList();
+        }
+    }
+
     /// <summary>
     /// EditorではSceneAssetを選択し、RuntimeではGUIDとパスだけを利用するシーン参照です。
     /// SceneAssetをRuntimeアセンブリへ持ち込まないため、ビルド時にも安全に利用できます。

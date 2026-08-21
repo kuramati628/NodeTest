@@ -65,7 +65,9 @@ namespace ScenarioGraphSystem
         [SerializeField] private GameRegistry gameRegistry;
         [SerializeField] private string gameId;
         [FormerlySerializedAs("gameData")]
-        [SerializeField] private SentenceData sentenceData;
+        [FormerlySerializedAs("sentenceData")]
+        [SerializeField] private ScriptableObject attachedData;
+        [SerializeField] private ScenarioBranchResolver branchResolver;
         [SerializeField] private List<OutputPortData> outputPorts = new();
 
         public string Guid => guid;
@@ -77,7 +79,8 @@ namespace ScenarioGraphSystem
         public ScenarioDefinition ScenarioDefinition { get => scenarioDefinition; set => scenarioDefinition = value; }
         public GameRegistry GameRegistry { get => gameRegistry; set => gameRegistry = value; }
         public string GameId { get => gameId; set => gameId = value ?? string.Empty; }
-        public SentenceData SentenceData { get => sentenceData; set => sentenceData = value; }
+        public ScriptableObject AttachedData { get => attachedData; set => attachedData = value; }
+        public ScenarioBranchResolver BranchResolver { get => branchResolver; set => branchResolver = value; }
         public List<OutputPortData> OutputPorts => outputPorts;
 
         /// <summary>種別に応じた初期ポートを持つ新規ノードを生成します。</summary>
@@ -116,7 +119,8 @@ namespace ScenarioGraphSystem
             clone.scenarioDefinition = scenarioDefinition;
             clone.gameRegistry = gameRegistry;
             clone.gameId = gameId;
-            clone.sentenceData = sentenceData;
+            clone.attachedData = attachedData;
+            clone.branchResolver = branchResolver;
             clone.outputPorts.Clear();
             foreach (var port in outputPorts)
                 clone.outputPorts.Add(OutputPortData.Create(port.DisplayName, port.BranchName));

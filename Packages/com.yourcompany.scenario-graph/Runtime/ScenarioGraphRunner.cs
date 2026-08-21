@@ -78,14 +78,20 @@ namespace ScenarioGraphSystem
             if (!running || currentNode == null || currentNode.NodeType != ScenarioNodeType.Game)
                 return;
 
-            if (string.IsNullOrWhiteSpace(branchName) || currentNode.SentenceData == null)
+            if (string.IsNullOrWhiteSpace(branchName))
             {
                 Fail("ゲームから有効な分岐名が返されませんでした。");
                 return;
             }
-            if (!currentNode.SentenceData.GetBranchNames().Contains(branchName))
+            if (!ScenarioBranchResolverUtility.TryGetBranchNames(
+                    currentNode.AttachedData, currentNode.BranchResolver, out var branchNames, out var branchError))
             {
-                Fail($"ゲームからSentenceDataにない分岐『{branchName}』が返されました。");
+                Fail(branchError);
+                return;
+            }
+            if (!branchNames.Contains(branchName))
+            {
+                Fail($"ゲームからアタッチデータにない分岐『{branchName}』が返されました。");
                 return;
             }
 
@@ -205,14 +211,15 @@ namespace ScenarioGraphSystem
                 Fail("未解決のゲームIDです。");
                 return;
             }
-            if (node.SentenceData == null)
+            if (node.AttachedData == null)
             {
-                Fail("SentenceDataが未設定です。");
+                Fail("アタッチデータが未設定です。");
                 return;
             }
-            if (node.SentenceData.GetBranchNames().Count == 0)
+            if (!ScenarioBranchResolverUtility.TryGetBranchNames(node.AttachedData, node.BranchResolver,
+                    out _, out var branchError))
             {
-                Fail("SentenceDataに分岐が設定されていません。");
+                Fail(branchError);
                 return;
             }
             if (registration.Scene == null || !registration.Scene.IsAssigned)
@@ -247,7 +254,7 @@ namespace ScenarioGraphSystem
                 var completed = false;
                 try
                 {
-                    game.StartGame(node.SentenceData, result =>
+                    game.StartGame(node.AttachedData, result =>
                     {
                         if (completed || !running || version != transitionVersion)
                             return;

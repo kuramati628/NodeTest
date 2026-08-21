@@ -323,7 +323,7 @@ namespace ScenarioGraphSystem.Editor
 
                 try
                 {
-                    game.StartGame(node.SentenceData, result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"));
+                    game.StartGame(node.AttachedData, result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"));
                 }
                 catch (Exception exception)
                 {

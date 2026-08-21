@@ -1,5 +1,6 @@
 using System;
 using R3;
+using UnityEngine;
 
 namespace ScenarioGraphSystem
 {
@@ -29,7 +30,7 @@ namespace ScenarioGraphSystem
     /// <summary>ゲームシーン内に1つだけ配置するゲーム実装の契約です。</summary>
     public interface IScenarioGame
     {
-        void StartGame(SentenceData definition, Action<string> onCompleted);
+        void StartGame(ScriptableObject definition, Action<string> onCompleted);
     }
 
     /// <summary>Graph Editorから選択ノードを単体デバッグするPlay Mode側ホストです。</summary>

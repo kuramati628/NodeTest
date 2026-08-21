@@ -78,21 +78,21 @@ namespace ScenarioGraphSystem
                     errors.Add(new GraphValidationError($"GameRegistry『{node.GameRegistry.name}』に重複するゲーム名があります。", node.Guid));
                 }
 
-                if (node.SentenceData == null)
+                if (node.AttachedData == null)
                 {
-                    errors.Add(new GraphValidationError($"ゲーム『{node.DisplayName}』にSentenceDataが設定されていません。", node.Guid));
+                    errors.Add(new GraphValidationError($"ゲーム『{node.DisplayName}』にアタッチデータが設定されていません。", node.Guid));
                 }
-                else if (node.SentenceData.GetBranchNames().Count == 0)
+                else if (!ScenarioBranchResolverUtility.TryGetBranchNames(node.AttachedData, node.BranchResolver,
+                             out var expectedBranches, out var branchError))
                 {
-                    errors.Add(new GraphValidationError($"SentenceData『{node.SentenceData.name}』に分岐が設定されていません。", node.Guid));
+                    errors.Add(new GraphValidationError(branchError, node.Guid));
                 }
                 else
                 {
-                    var expectedBranches = node.SentenceData.GetBranchNames();
                     foreach (var branch in expectedBranches.Where(branch => node.OutputPorts.All(port => port.BranchName != branch)))
                         errors.Add(new GraphValidationError($"ゲーム『{node.DisplayName}』に分岐『{branch}』の出力ポートがありません。", node.Guid));
                     foreach (var port in node.OutputPorts.Where(port => !expectedBranches.Contains(port.BranchName)))
-                        errors.Add(new GraphValidationError($"ゲーム『{node.DisplayName}』にSentenceDataに存在しない出力『{port.DisplayName}』があります。", node.Guid));
+                        errors.Add(new GraphValidationError($"ゲーム『{node.DisplayName}』にアタッチデータに存在しない出力『{port.DisplayName}』があります。", node.Guid));
                 }
 
                 foreach (var duplicate in node.OutputPorts.GroupBy(port => port.BranchName).Where(group => group.Count() > 1))

@@ -54,9 +54,9 @@ namespace ScenarioGraphSystem
                 return false;
             }
             if (node.NodeType == ScenarioNodeType.Game &&
-                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) || node.SentenceData == null))
+                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) || node.AttachedData == null))
             {
-                reason = "ノードにゲームとSentenceDataを設定してください。";
+                reason = "ノードにゲームとアタッチデータを設定してください。";
                 return false;
             }
             if (node.NodeType is not (ScenarioNodeType.Scenario or ScenarioNodeType.Game))

@@ -96,7 +96,7 @@ namespace ScenarioGraphSystem.Editor
             rebuilding = false;
         }
 
-        /// <summary>SentenceDataのInspector編集後に、enum分岐と出力ポートを同期します。</summary>
+        /// <summary>アタッチデータのInspector編集後に、分岐と出力ポートを同期します。</summary>
         public bool SynchronizeSentenceOutputsFromInspector()
         {
             if (Graph == null || rebuilding || !SynchronizeAllSentenceOutputs())
@@ -163,14 +163,27 @@ namespace ScenarioGraphSystem.Editor
             Reload();
         }
 
-        public void SetSentenceData(string nodeGuid, SentenceData sentenceData)
+        public void SetAttachedData(string nodeGuid, ScriptableObject attachedData)
         {
             var node = Graph.FindNode(nodeGuid);
             if (node == null)
                 return;
-            Mutate("SentenceDataを変更", () =>
+            Mutate("アタッチデータを変更", () =>
             {
-                node.SentenceData = sentenceData;
+                node.AttachedData = attachedData;
+                SynchronizeSentenceOutputs(node);
+            });
+            Reload();
+        }
+
+        public void SetBranchResolver(string nodeGuid, ScenarioBranchResolver branchResolver)
+        {
+            var node = Graph.FindNode(nodeGuid);
+            if (node == null)
+                return;
+            Mutate("Branch Resolverを変更", () =>
+            {
+                node.BranchResolver = branchResolver;
                 SynchronizeSentenceOutputs(node);
             });
             Reload();
@@ -188,10 +201,10 @@ namespace ScenarioGraphSystem.Editor
                 return;
             }
             if (node.NodeType == ScenarioNodeType.Game &&
-                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) || node.SentenceData == null ||
-                 node.SentenceData.GetBranchNames().Count == 0))
+                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) ||
+                 !ScenarioBranchResolverUtility.TryGetBranchNames(node.AttachedData, node.BranchResolver, out _, out _)))
             {
-                EditorUtility.DisplayDialog("ノードデバッグ", "ノードにゲームと、分岐を持つSentenceDataを設定してください。", "OK");
+                EditorUtility.DisplayDialog("ノードデバッグ", "ノードにゲームと、分岐を解決できるアタッチデータを設定してください。", "OK");
                 return;
             }
             ScenarioGraphNodeDebugSession.Start(Graph, node);
@@ -210,7 +223,9 @@ namespace ScenarioGraphSystem.Editor
             var before = node.OutputPorts.Select(port => (port.Guid, port.DisplayName, port.BranchName)).ToList();
             var unused = node.OutputPorts.ToList();
             var synchronized = new List<OutputPortData>();
-            var branchNames = node.SentenceData?.GetBranchNames() ?? Array.Empty<string>();
+            if (!ScenarioBranchResolverUtility.TryGetBranchNames(node.AttachedData, node.BranchResolver,
+                    out var branchNames, out _))
+                return false;
             foreach (var branchName in branchNames)
             {
                 var existing = unused.FirstOrDefault(port => port.BranchName == branchName) ??
