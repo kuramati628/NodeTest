@@ -1,0 +1,13 @@
+{
+  "name": "ScenarioGraph.Editor",
+  "rootNamespace": "ScenarioGraphSystem.Editor",
+  "references": [
+    "ScenarioGraph.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true,
+  "overrideReferences": false,
+  "noEngineReferences": false
+}

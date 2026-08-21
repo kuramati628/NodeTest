@@ -1,0 +1,26 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+UserSettings/
+MemoryCaptures/
+
+# Local-only Spreadsheet credentials and import profiles
+Assets/LocalConfig/
+Assets/LocalConfig.meta
+
+# IDE and OS files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.vsconfig
+*.user
+*.tmp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+{
+  "name": "ScenarioSpreadsheet.Editor",
+  "rootNamespace": "ScenarioGraphSystem.Editor.Spreadsheet",
+  "references": [
+    "ScenarioGraph.Runtime",
+    "UniTask"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true,
+  "overrideReferences": false,
+  "noEngineReferences": false
+}

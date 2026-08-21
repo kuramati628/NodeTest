@@ -1,0 +1,12 @@
+{
+  "name": "com.yourcompany.scenario-graph",
+  "version": "0.1.0",
+  "displayName": "Scenario Graph",
+  "description": "GraphViewベースのシナリオ・ゲーム進行グラフ編集とRuntime実行機構です。",
+  "unity": "6000.0",
+  "keywords": [
+    "scenario",
+    "graph",
+    "graphview"
+  ]
+}
