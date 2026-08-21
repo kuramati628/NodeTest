@@ -9,7 +9,7 @@ namespace ScenarioGraphSystem
     /// シナリオ・ゲーム・Graph Runnerの接続をPlay Modeで確認する起動用モックです。
     /// 初期値では最初のシナリオだけを自動完了し、ゲーム後の分岐先ノードを保持します。
     /// </summary>
-    public sealed class ScenarioGraphMockRunner : MonoBehaviour
+    public sealed class ScenarioGraphMockRunner : MonoBehaviour, IScenarioGraphDebugHost
     {
         [SerializeField] private ScenarioGraph graph;
         [SerializeField, Min(0f)] private float scenarioCompletionDelaySeconds = 0.25f;
@@ -30,13 +30,52 @@ namespace ScenarioGraphSystem
         [ContextMenu("モックグラフを開始")]
         public void StartGraph()
         {
-            DisposeRunner();
             if (graph == null)
             {
+                DisposeRunner();
                 Debug.LogError("[ScenarioGraphMockRunner] ScenarioGraphが設定されていません。", this);
                 return;
             }
 
+            StartRunner(graph, null);
+        }
+
+        public bool CanDebugNode(ScenarioGraph targetGraph, NodeData node, out string reason)
+        {
+            if (targetGraph == null || node == null)
+            {
+                reason = "グラフまたはノードが設定されていません。";
+                return false;
+            }
+            if (node.NodeType == ScenarioNodeType.Scenario &&
+                (node.ScenarioDefinition == null || node.ScenarioDefinition.Csv == null))
+            {
+                reason = "ノードにScenarioDefinitionとCSVを設定してください。";
+                return false;
+            }
+            if (node.NodeType == ScenarioNodeType.Game &&
+                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) || node.SentenceData == null))
+            {
+                reason = "ノードにゲームとSentenceDataを設定してください。";
+                return false;
+            }
+            if (node.NodeType is not (ScenarioNodeType.Scenario or ScenarioNodeType.Game))
+            {
+                reason = "単体デバッグできるのはシナリオまたはゲームノードです。";
+                return false;
+            }
+            reason = string.Empty;
+            return true;
+        }
+
+        public void DebugNode(ScenarioGraph targetGraph, NodeData node)
+        {
+            StartRunner(targetGraph, node.Guid);
+        }
+
+        private void StartRunner(ScenarioGraph targetGraph, string nodeGuid)
+        {
+            DisposeRunner();
             scenarioPlayer = new MockScenarioPlayer(this, scenarioCompletionDelaySeconds, autoCompleteScenarioCount);
             runner = new ScenarioGraphRunner(scenarioPlayer, new UnityScenarioGameSceneService());
             subscriptions = new CompositeDisposable();
@@ -46,7 +85,12 @@ namespace ScenarioGraphSystem
                 .AddTo(subscriptions);
             runner.OnError.Subscribe(message => Debug.LogError($"[ScenarioGraphMockRunner] {message}", this))
                 .AddTo(subscriptions);
-            runner.Start(graph);
+            runner.OnCompleted.Subscribe(_ => Debug.Log("[ScenarioGraphMockRunner] 実行完了", this))
+                .AddTo(subscriptions);
+            if (string.IsNullOrEmpty(nodeGuid))
+                runner.Start(targetGraph);
+            else
+                runner.StartAtNode(targetGraph, nodeGuid);
         }
 
         /// <summary>現在のシナリオノードを手動完了させます。終端検証にも使用できます。</summary>

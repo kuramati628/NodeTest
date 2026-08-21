@@ -1,9 +1,13 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEditor.Experimental.GraphView;
+using UnityEditor.SceneManagement;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
 namespace ScenarioGraphSystem.Editor
@@ -16,6 +20,7 @@ namespace ScenarioGraphSystem.Editor
         private MiniMap miniMap;
         private ScrollView validationList;
         private Label statusLabel;
+        private bool lastPlayModeState;
 
         [MenuItem("Window/Scenario/Scenario Graph Editor")]
         public static void OpenWindow()
@@ -46,6 +51,7 @@ namespace ScenarioGraphSystem.Editor
         private void OnEnable()
         {
             Undo.undoRedoPerformed += OnUndoRedo;
+            lastPlayModeState = EditorApplication.isPlayingOrWillChangePlaymode;
             BuildUi();
         }
 
@@ -73,6 +79,7 @@ namespace ScenarioGraphSystem.Editor
             toolbar.Add(new ToolbarButton(() => graphView?.CreateNode(ScenarioNodeType.Start, ViewCenter())) { text = "開始" });
             toolbar.Add(new ToolbarButton(() => graphView?.CreateNode(ScenarioNodeType.Scenario, ViewCenter())) { text = "シナリオ" });
             toolbar.Add(new ToolbarButton(() => graphView?.CreateNode(ScenarioNodeType.Game, ViewCenter())) { text = "ゲーム" });
+            toolbar.Add(new ToolbarButton(() => graphView?.CreateNode(ScenarioNodeType.End, ViewCenter())) { text = "終了" });
             toolbar.Add(new ToolbarButton(() => graphView?.CreateGroup(ViewCenter())) { text = "グループ" });
             toolbar.Add(new ToolbarButton(() => graphView?.CreateComment(ViewCenter())) { text = "コメント" });
             toolbar.Add(new ToolbarSpacer());
@@ -185,6 +192,20 @@ namespace ScenarioGraphSystem.Editor
             RefreshValidation(false);
         }
 
+        private void OnInspectorUpdate()
+        {
+            var isPlaying = EditorApplication.isPlayingOrWillChangePlaymode;
+            if (lastPlayModeState != isPlaying)
+            {
+                lastPlayModeState = isPlaying;
+                graphView?.Reload();
+                RefreshValidation(false);
+                return;
+            }
+            if (graphView?.SynchronizeSentenceOutputsFromInspector() == true)
+                RefreshValidation(false);
+        }
+
         [OnOpenAsset(1)]
 #pragma warning disable CS0618 // OnOpenAssetはintを渡すため、Unity 6.0互換APIを使用します。
         private static bool OpenScenarioGraphAsset(int instanceId, int line)
@@ -197,5 +218,137 @@ namespace ScenarioGraphSystem.Editor
             return true;
         }
 #pragma warning restore CS0618
+    }
+
+    /// <summary>Graph Editorで要求されたノード単体デバッグを、Scene切替後のPlay Modeで開始します。</summary>
+    [InitializeOnLoad]
+    internal static class ScenarioGraphNodeDebugSession
+    {
+        private const string PendingKey = "ScenarioGraph.NodeDebug.Pending";
+        private const string GraphPathKey = "ScenarioGraph.NodeDebug.GraphPath";
+        private const string NodeGuidKey = "ScenarioGraph.NodeDebug.NodeGuid";
+
+        static ScenarioGraphNodeDebugSession()
+        {
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        }
+
+        public static void Start(ScenarioGraph graph, NodeData node)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("ノードデバッグ", "ノードデバッグはPlay Mode外で実行してください。", "OK");
+                return;
+            }
+            if (graph == null || node == null)
+                return;
+
+            var graphPath = AssetDatabase.GetAssetPath(graph);
+            if (string.IsNullOrEmpty(graphPath))
+            {
+                EditorUtility.DisplayDialog("ノードデバッグ", "対象のScenarioGraphアセットを保存してください。", "OK");
+                return;
+            }
+
+            var scenePath = ResolveScenePath(node);
+            if (string.IsNullOrEmpty(scenePath))
+                return;
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                return;
+
+            SessionState.SetString(GraphPathKey, graphPath);
+            SessionState.SetString(NodeGuidKey, node.Guid);
+            SessionState.SetBool(PendingKey, true);
+
+            if (SceneManager.GetActiveScene().path != scenePath)
+                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            EditorApplication.isPlaying = true;
+        }
+
+        private static string ResolveScenePath(NodeData node)
+        {
+            if (node.NodeType == ScenarioNodeType.Scenario)
+            {
+                var path = SceneManager.GetActiveScene().path;
+                if (string.IsNullOrEmpty(path))
+                    EditorUtility.DisplayDialog("ノードデバッグ", "シナリオをデバッグするSceneを保存してから実行してください。", "OK");
+                return path;
+            }
+
+            if (node.NodeType != ScenarioNodeType.Game || node.GameRegistry == null ||
+                !node.GameRegistry.TryGet(node.GameId, out var registration) || registration.Scene == null ||
+                !registration.Scene.IsAssigned)
+            {
+                EditorUtility.DisplayDialog("ノードデバッグ", "ゲームノードに有効なゲームSceneを設定してください。", "OK");
+                return string.Empty;
+            }
+            return registration.Scene.ScenePath;
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.EnteredPlayMode && SessionState.GetBool(PendingKey, false))
+                EditorApplication.delayCall += ExecutePending;
+            else if (state == PlayModeStateChange.EnteredEditMode)
+                ClearPending();
+        }
+
+        private static void ExecutePending()
+        {
+            if (!SessionState.GetBool(PendingKey, false))
+                return;
+
+            var graphPath = SessionState.GetString(GraphPathKey, string.Empty);
+            var nodeGuid = SessionState.GetString(NodeGuidKey, string.Empty);
+            ClearPending();
+
+            var graph = AssetDatabase.LoadAssetAtPath<ScenarioGraph>(graphPath);
+            var node = graph?.FindNode(nodeGuid);
+            if (node == null)
+            {
+                Debug.LogError("[ScenarioGraph] デバッグ対象ノードを解決できません。");
+                return;
+            }
+
+            if (node.NodeType == ScenarioNodeType.Game)
+            {
+                var game = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include)
+                    .OfType<IScenarioGame>()
+                    .FirstOrDefault();
+                if (game == null)
+                {
+                    Debug.LogError("[ScenarioGraph] 読み込んだゲームSceneにIScenarioGameがありません。");
+                    return;
+                }
+
+                try
+                {
+                    game.StartGame(node.SentenceData, result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"));
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogError($"[ScenarioGraph] ゲームデバッグの開始に失敗しました: {exception.Message}");
+                }
+                return;
+            }
+
+            var reason = "読み込んだSceneにIScenarioGraphDebugHostがありません。";
+            foreach (var host in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include)
+                         .OfType<IScenarioGraphDebugHost>())
+            {
+                if (!host.CanDebugNode(graph, node, out reason))
+                    continue;
+                host.DebugNode(graph, node);
+                return;
+            }
+            Debug.LogError($"[ScenarioGraph] シナリオデバッグを開始できません: {reason}");
+        }
+
+        private static void ClearPending()
+        {
+            SessionState.EraseBool(PendingKey);
+            SessionState.EraseString(GraphPathKey);
+            SessionState.EraseString(NodeGuidKey);
+        }
     }
 }

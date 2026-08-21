@@ -13,10 +13,12 @@ namespace ScenarioGraphSystem
         private readonly Subject<NodeData> nodeChanged = new();
         private readonly Subject<string> error = new();
         private readonly Subject<ScenarioGameLoadedEvent> gameLoaded = new();
+        private readonly Subject<Unit> completed = new();
         private CompositeDisposable transitionSubscriptions = new();
         private ScenarioGraph graph;
         private NodeData currentNode;
         private bool running;
+        private bool singleNodeDebug;
         private int transitionVersion;
 
         public ScenarioGraphRunner(IScenarioPlayer scenarioPlayer, IScenarioGameSceneService gameSceneService)
@@ -27,6 +29,7 @@ namespace ScenarioGraphSystem
 
         public Observable<NodeData> OnNodeChanged => nodeChanged;
         public Observable<string> OnError => error;
+        public Observable<Unit> OnCompleted => completed;
         /// <summary>ゲームSceneのロードとゲーム実装解決が完了した直後に発行されます。</summary>
         public Observable<ScenarioGameLoadedEvent> OnGameLoaded => gameLoaded;
 
@@ -46,6 +49,23 @@ namespace ScenarioGraphSystem
             EnterNode(GetStartNode());
         }
 
+        /// <summary>シナリオまたはゲームノードを、そのノードに設定されたデータだけで単体実行します。</summary>
+        public void StartAtNode(ScenarioGraph targetGraph, string nodeGuid)
+        {
+            Reset();
+            graph = targetGraph;
+            var node = graph != null ? graph.FindNode(nodeGuid) : null;
+            if (node == null || node.NodeType is not (ScenarioNodeType.Scenario or ScenarioNodeType.Game))
+            {
+                Fail("デバッグ対象のシナリオまたはゲームノードを解決できません。");
+                return;
+            }
+
+            singleNodeDebug = true;
+            running = true;
+            EnterNode(node);
+        }
+
         /// <summary>現在設定されているグラフの開始ノードを返します。</summary>
         public NodeData GetStartNode() => graph != null ? graph.GetStartNode() : null;
 
@@ -53,15 +73,32 @@ namespace ScenarioGraphSystem
         public NodeData GetCurrentNode() => currentNode;
 
         /// <summary>ゲーム終了結果に対応する出力Edgeへ遷移します。</summary>
-        public void SubmitGameResult(GameResult result)
+        public void SubmitGameResult(string branchName)
         {
             if (!running || currentNode == null || currentNode.NodeType != ScenarioNodeType.Game)
                 return;
 
-            var port = currentNode.OutputPorts.FirstOrDefault(candidate => candidate.GameResult == result);
+            if (string.IsNullOrWhiteSpace(branchName) || currentNode.SentenceData == null)
+            {
+                Fail("ゲームから有効な分岐名が返されませんでした。");
+                return;
+            }
+            if (!currentNode.SentenceData.GetBranchNames().Contains(branchName))
+            {
+                Fail($"ゲームからSentenceDataにない分岐『{branchName}』が返されました。");
+                return;
+            }
+
+            if (singleNodeDebug)
+            {
+                Complete();
+                return;
+            }
+
+            var port = currentNode.OutputPorts.FirstOrDefault(candidate => candidate.BranchName == branchName);
             if (port == null)
             {
-                Fail($"GameResult.{result}に対応する出力ポートがありません。");
+                Fail($"分岐『{branchName}』に対応する出力ポートがありません。");
                 return;
             }
 
@@ -69,7 +106,7 @@ namespace ScenarioGraphSystem
                 candidate.OutputNodeGuid == currentNode.Guid && candidate.OutputPortGuid == port.Guid);
             if (edge == null)
             {
-                Fail($"GameResult.{result}に対応するEdgeがありません。");
+                Fail($"分岐『{branchName}』に対応するEdgeがありません。");
                 return;
             }
 
@@ -81,6 +118,7 @@ namespace ScenarioGraphSystem
         {
             transitionVersion++;
             running = false;
+            singleNodeDebug = false;
             scenarioPlayer?.Stop();
             gameSceneService?.UnloadCurrentGame();
             transitionSubscriptions.Dispose();
@@ -118,6 +156,9 @@ namespace ScenarioGraphSystem
                 case ScenarioNodeType.Game:
                     StartGame(node);
                     break;
+                case ScenarioNodeType.End:
+                    Complete();
+                    break;
             }
         }
 
@@ -138,7 +179,12 @@ namespace ScenarioGraphSystem
             scenarioPlayer.ScenarioCompleted.Take(1).Subscribe(_ =>
             {
                 if (running && version == transitionVersion)
-                    AdvanceSingleOutput(node, "シナリオノードの出力が未接続です。");
+                {
+                    if (singleNodeDebug)
+                        Complete();
+                    else
+                        AdvanceSingleOutput(node, "シナリオノードの出力が未接続です。");
+                }
             }, exception => Fail($"シナリオ完了通知でエラーが発生しました: {exception.Message}"), _ => { })
             .AddTo(transitionSubscriptions);
 
@@ -159,9 +205,14 @@ namespace ScenarioGraphSystem
                 Fail("未解決のゲームIDです。");
                 return;
             }
-            if (node.GameData == null)
+            if (node.SentenceData == null)
             {
-                Fail("GameDataが未設定です。");
+                Fail("SentenceDataが未設定です。");
+                return;
+            }
+            if (node.SentenceData.GetBranchNames().Count == 0)
+            {
+                Fail("SentenceDataに分岐が設定されていません。");
                 return;
             }
             if (registration.Scene == null || !registration.Scene.IsAssigned)
@@ -196,7 +247,7 @@ namespace ScenarioGraphSystem
                 var completed = false;
                 try
                 {
-                    game.StartGame(node.GameData, result =>
+                    game.StartGame(node.SentenceData, result =>
                     {
                         if (completed || !running || version != transitionVersion)
                             return;
@@ -237,12 +288,24 @@ namespace ScenarioGraphSystem
             error.OnNext(message);
         }
 
+        private void Complete()
+        {
+            running = false;
+            singleNodeDebug = false;
+            transitionVersion++;
+            scenarioPlayer?.Stop();
+            gameSceneService?.UnloadCurrentGame();
+            transitionSubscriptions.Clear();
+            completed.OnNext(Unit.Default);
+        }
+
         public void Dispose()
         {
             Reset();
             transitionSubscriptions.Dispose();
             nodeChanged.Dispose();
             gameLoaded.Dispose();
+            completed.Dispose();
             error.Dispose();
         }
     }

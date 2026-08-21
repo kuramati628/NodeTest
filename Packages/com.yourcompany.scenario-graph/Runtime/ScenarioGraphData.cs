@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace ScenarioGraphSystem
 {
@@ -9,15 +10,8 @@ namespace ScenarioGraphSystem
     {
         Start,
         Scenario,
-        Game
-    }
-
-    /// <summary>すべてのゲームが返す共通の終了結果です。必要に応じて値を末尾へ追加してください。</summary>
-    public enum GameResult
-    {
-        Success,
-        Failure,
-        Cancelled
+        Game,
+        End
     }
 
     /// <summary>ノードの将来拡張用メタデータです。</summary>
@@ -33,26 +27,26 @@ namespace ScenarioGraphSystem
         public string CustomData { get => customData; set => customData = value ?? string.Empty; }
     }
 
-    /// <summary>ゲームノードの出力ポートと、そのポートに対応する結果を保存します。</summary>
+    /// <summary>ノードの出力ポートと、ゲームノードの場合は対応するenum名を保存します。</summary>
     [Serializable]
     public sealed class OutputPortData
     {
         [SerializeField] private string guid;
         [SerializeField] private string displayName;
-        [SerializeField] private GameResult gameResult;
+        [SerializeField] private string branchName;
 
         public string Guid => guid;
         public string DisplayName { get => displayName; set => displayName = value ?? string.Empty; }
-        public GameResult GameResult { get => gameResult; set => gameResult = value; }
+        public string BranchName { get => branchName; set => branchName = value ?? string.Empty; }
 
         /// <summary>新しい不変GUIDを持つ出力ポートを生成します。</summary>
-        public static OutputPortData Create(string name, GameResult result = GameResult.Success)
+        public static OutputPortData Create(string name, string branch = "")
         {
             return new OutputPortData
             {
                 guid = System.Guid.NewGuid().ToString("N"),
                 displayName = name ?? string.Empty,
-                gameResult = result
+                branchName = branch ?? string.Empty
             };
         }
     }
@@ -70,7 +64,8 @@ namespace ScenarioGraphSystem
         [SerializeField] private ScenarioDefinition scenarioDefinition;
         [SerializeField] private GameRegistry gameRegistry;
         [SerializeField] private string gameId;
-        [SerializeField] private GameData gameData;
+        [FormerlySerializedAs("gameData")]
+        [SerializeField] private SentenceData sentenceData;
         [SerializeField] private List<OutputPortData> outputPorts = new();
 
         public string Guid => guid;
@@ -82,7 +77,7 @@ namespace ScenarioGraphSystem
         public ScenarioDefinition ScenarioDefinition { get => scenarioDefinition; set => scenarioDefinition = value; }
         public GameRegistry GameRegistry { get => gameRegistry; set => gameRegistry = value; }
         public string GameId { get => gameId; set => gameId = value ?? string.Empty; }
-        public GameData GameData { get => gameData; set => gameData = value; }
+        public SentenceData SentenceData { get => sentenceData; set => sentenceData = value; }
         public List<OutputPortData> OutputPorts => outputPorts;
 
         /// <summary>種別に応じた初期ポートを持つ新規ノードを生成します。</summary>
@@ -97,12 +92,13 @@ namespace ScenarioGraphSystem
                     ScenarioNodeType.Start => "開始",
                     ScenarioNodeType.Scenario => "シナリオ",
                     ScenarioNodeType.Game => "ゲーム",
+                    ScenarioNodeType.End => "終了",
                     _ => "ノード"
                 },
                 position = new Rect(position, new Vector2(260, type == ScenarioNodeType.Game ? 230 : 180))
             };
 
-            if (type != ScenarioNodeType.Game)
+            if (type != ScenarioNodeType.Game && type != ScenarioNodeType.End)
                 node.outputPorts.Add(OutputPortData.Create("次へ"));
             return node;
         }
@@ -120,10 +116,10 @@ namespace ScenarioGraphSystem
             clone.scenarioDefinition = scenarioDefinition;
             clone.gameRegistry = gameRegistry;
             clone.gameId = gameId;
-            clone.gameData = gameData;
+            clone.sentenceData = sentenceData;
             clone.outputPorts.Clear();
             foreach (var port in outputPorts)
-                clone.outputPorts.Add(OutputPortData.Create(port.DisplayName, port.GameResult));
+                clone.outputPorts.Add(OutputPortData.Create(port.DisplayName, port.BranchName));
             return clone;
         }
     }

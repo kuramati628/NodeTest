@@ -1,12 +1,59 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 namespace ScenarioGraphSystem
 {
     /// <summary>ゲームごとに異なる設定アセットの共通基底型です。</summary>
-    public abstract class GameData : ScriptableObject
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property | AttributeTargets.Enum)]
+    public sealed class SentenceBranchEnumAttribute : Attribute
     {
+    }
+
+    /// <summary>
+    /// ゲームへ渡す文章データの基底型です。派生型内のenumを分岐として公開します。
+    /// enumが複数ある場合は対象のenum、フィールド、またはプロパティへSentenceBranchEnumを付けます。
+    /// </summary>
+    public abstract class SentenceData : ScriptableObject
+    {
+        public virtual Type GetBranchEnumType()
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var type = GetType();
+            var attributed = type.GetFields(flags)
+                .Where(field => field.FieldType.IsEnum && field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                .Select(field => field.FieldType)
+                .Concat(type.GetProperties(flags)
+                    .Where(property => property.PropertyType.IsEnum && property.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                    .Select(property => property.PropertyType))
+                .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(nested => nested.IsEnum && nested.GetCustomAttribute<SentenceBranchEnumAttribute>() != null))
+                .Distinct()
+                .ToList();
+            if (attributed.Count == 1)
+                return attributed[0];
+            if (attributed.Count > 1)
+                return null;
+
+            var candidates = type.GetFields(flags)
+                .Where(field => field.FieldType.IsEnum)
+                .Select(field => field.FieldType)
+                .Concat(type.GetProperties(flags)
+                    .Where(property => property.PropertyType.IsEnum)
+                    .Select(property => property.PropertyType))
+                .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum))
+                .Distinct()
+                .ToList();
+            return candidates.Count == 1 ? candidates[0] : null;
+        }
+
+        public virtual IReadOnlyList<string> GetBranchNames()
+        {
+            var enumType = GetBranchEnumType();
+            return enumType != null && enumType.IsEnum ? Enum.GetNames(enumType) : Array.Empty<string>();
+        }
     }
 
     /// <summary>

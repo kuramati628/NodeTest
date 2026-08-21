@@ -69,6 +69,9 @@ namespace ScenarioGraphSystem.Editor
                 case ScenarioNodeType.Game:
                     BuildGameFields();
                     break;
+                case ScenarioNodeType.End:
+                    extensionContainer.Add(new Label("グラフの実行終了地点"));
+                    break;
             }
         }
 
@@ -84,6 +87,9 @@ namespace ScenarioGraphSystem.Editor
                 "ScenarioDefinitionを変更",
                 () => Data.ScenarioDefinition = evt.newValue as ScenarioDefinition));
             extensionContainer.Add(definitionField);
+            var debugButton = new Button(() => owner.DebugNode(Data.Guid)) { text = "このシナリオをデバッグ" };
+            debugButton.SetEnabled(!EditorApplication.isPlayingOrWillChangePlaymode);
+            extensionContainer.Add(debugButton);
         }
 
         private void BuildGameFields()
@@ -111,12 +117,12 @@ namespace ScenarioGraphSystem.Editor
             }));
             extensionContainer.Add(popup);
 
-            var definitionField = new ObjectField("Definition") { objectType = typeof(GameData), value = Data.GameData, allowSceneObjects = false };
-            definitionField.RegisterValueChangedCallback(evt => owner.Mutate("GameDataを変更", () => Data.GameData = evt.newValue as GameData));
+            var definitionField = new ObjectField("Sentence Data") { objectType = typeof(SentenceData), value = Data.SentenceData, allowSceneObjects = false };
+            definitionField.RegisterValueChangedCallback(evt => owner.SetSentenceData(Data.Guid, evt.newValue as SentenceData));
             extensionContainer.Add(definitionField);
-
-            var addButton = new Button(() => owner.AddGameOutput(Data.Guid)) { text = "+ 出力ポート" };
-            extensionContainer.Add(addButton);
+            var debugButton = new Button(() => owner.DebugNode(Data.Guid)) { text = "このゲームをデバッグ" };
+            debugButton.SetEnabled(!EditorApplication.isPlayingOrWillChangePlaymode);
+            extensionContainer.Add(debugButton);
         }
 
         private void BuildOutputPorts()
@@ -126,30 +132,11 @@ namespace ScenarioGraphSystem.Editor
             {
                 var row = new VisualElement { style = { flexDirection = FlexDirection.Row } };
                 var port = InstantiatePort(Orientation.Horizontal, Direction.Output, Port.Capacity.Single, typeof(bool));
-                port.portName = Data.NodeType == ScenarioNodeType.Game ? portData.GameResult.ToString() : portData.DisplayName;
+                port.portName = Data.NodeType == ScenarioNodeType.Game ? portData.BranchName : portData.DisplayName;
                 port.userData = portData.Guid;
                 outputPorts[portData.Guid] = port;
                 row.Add(port);
 
-                if (Data.NodeType == ScenarioNodeType.Game)
-                {
-                    var resultField = new EnumField(portData.GameResult) { style = { width = 95 } };
-                    resultField.RegisterValueChangedCallback(evt => owner.Mutate("GameResultを変更", () =>
-                    {
-                        var result = (GameResult)evt.newValue;
-                        if (Data.OutputPorts.Any(port => port != portData && port.GameResult == result))
-                        {
-                            EditorUtility.DisplayDialog("GameResult重複", $"GameResult.{result}は同じノード内ですでに使用されています。", "OK");
-                            owner.Reload();
-                            return;
-                        }
-                        portData.GameResult = result;
-                        owner.Reload();
-                    }));
-                    row.Add(resultField);
-                    var remove = new Button(() => owner.RemoveGameOutput(Data.Guid, portData.Guid)) { text = "−" };
-                    row.Add(remove);
-                }
                 outputContainer.Add(row);
             }
         }

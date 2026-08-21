@@ -37,7 +37,7 @@ Packages/com.yourcompany.scenario-spreadsheet/Editor/
 ScenarioGraph
  ├─ List<NodeData>
  │   ├─ ScenarioDefinition → TextAsset (Scenario)
- │   └─ GameRegistry + gameId + GameData + OutputPortData[] (Game)
+ │   └─ GameRegistry + gameId + SentenceData + OutputPortData[] (Game)
  ├─ List<EdgeData> ── outputNodeGuid/outputPortGuid → inputNodeGuid
  ├─ List<GroupData>
  ├─ List<CommentData>
@@ -56,11 +56,14 @@ Runner.OnGameLoaded ── Observable<ScenarioGameLoadedEvent>
 
 1. `Assets > Create > Scenario > Scenario Graph` でグラフを作成します。
 2. アセットをダブルクリックして専用Windowを開きます。
-3. ツールバーの「開始」で開始ノードを1個作ります。
+3. ツールバーの「開始」と「終了」で、それぞれのノードを1個ずつ作ります。
 4. 「シナリオ」「ゲーム」を追加し、右側出力から左側入力へ接続します。
 5. `Scenario Definition` を作成してCSVを設定し、シナリオノードから参照します。
-6. ゲームノードではGameRegistry、ゲーム、GameDataを選び、必要な結果ポートを追加します。
+6. ゲームノードではGameRegistry、ゲーム、SentenceDataを選びます。出力ポートはSentenceData内の分岐enumから自動生成されます。
 7. 「検証」で下部のエラー一覧を確認し、「保存」でアセットを保存します。
+
+`SentenceData`内にenumが1種類だけなら自動検出されます。複数のenumを持つ場合は、分岐に使うenum型、フィールド、
+またはプロパティへ`[SentenceBranchEnum]`を付けてください。enumメンバー名がそのまま出力ポート名になります。
 
 右クリックからもノード、グループ、コメントを作成できます。`Ctrl/Cmd+C` と `Ctrl/Cmd+V`、Delete、ズーム、パンはGraphView標準操作です。検索欄はノード名、CSV名、ゲーム名、コメント本文、グループ名を対象にします。グループを削除しても内部ノードは削除されません。
 
@@ -73,19 +76,27 @@ using System;
 using ScenarioGraphSystem;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Scenario/Sample Game Data")]
-public sealed class SampleGameData : GameData
+public enum SampleResult
 {
+    Success,
+    Failure
+}
+
+[CreateAssetMenu(menuName = "Scenario/Sample Game Data")]
+public sealed class SampleSentenceData : SentenceData
+{
+    [SentenceBranchEnum]
+    public SampleResult result;
     public int targetScore = 10;
 }
 
 public sealed class SampleGame : MonoBehaviour, IScenarioGame
 {
-    public void StartGame(GameData definition, Action<GameResult> onCompleted)
+    public void StartGame(SentenceData definition, Action<string> onCompleted)
     {
-        var settings = (SampleGameData)definition;
+        var settings = (SampleSentenceData)definition;
         // ゲーム終了時に必ず1回だけ呼び出します。
-        onCompleted(GameResult.Success);
+        onCompleted(SampleResult.Success.ToString());
     }
 }
 ```
@@ -153,13 +164,18 @@ CSVはImport Profileで指定した同一パスへ上書きされます。この
 
 ## モックによるPlay Mode接続確認
 
+シナリオノードとゲームノードには単体デバッグボタンがあります。ボタンはPlay Mode外でのみ実行できます。
+ゲームノードは登録済みのゲームSceneを読み込んでPlay Modeを開始し、設定済みの`SentenceData`をそのSceneの`IScenarioGame`へ渡します。
+シナリオノードは現在開いているSceneでPlay Modeを開始し、`IScenarioGraphDebugHost`へ対象ノードを渡します。
+デモの`ScenarioGraphMockRunner`はこのインターフェースを実装済みです。
+
 プロジェクトには全体接続確認用のモックを同梱しています。
 
-- `Assets/Demo/ScenarioGraph/MockGameData.asset` はゲームノードに設定済みです。`completionResult` を `Success` または `Failure` に変更すると分岐を切り替えられます。
+- `Assets/Demo/ScenarioGraph/MockGameData.asset` はゲームノードに設定済みです。Inspectorの`Branches`リストへ任意の分岐名を入力でき、`Completion Result`にはそのリストの値が選択肢として表示されます。
 - `Assets/Demo/ScenarioGraph/Scenes/game1.unity` と `game2.unity` には `MockScenarioGame` が配置済みです。どちらもBuild Settingsへ登録済みです。
 - `Assets/Demo/ScenarioGraph/Scenes/SampleScene.unity` の `Scenario Graph Mock Runner` は、Play Mode開始時に `ScenarioGraph.asset` を実行します。
 
-Play Modeでは「開始 → BeforeGameシナリオ → game1 → Success/Failureシナリオ」までConsoleへ出力されます。初期設定は分岐先シナリオで停止します。必要なら、`Scenario Graph Mock Runner` コンポーネントのコンテキストメニュー「現在のシナリオを完了」からループ遷移も確認できます。
+Play Modeでは「開始 → BeforeGameシナリオ → game1 → Success/Failureシナリオ」までConsoleへ出力されます。初期設定は分岐先シナリオで停止し、`Scenario Graph Mock Runner`のコンテキストメニュー「現在のシナリオを完了」を実行すると終了ノードまで確認できます。
 
 ## R3
 

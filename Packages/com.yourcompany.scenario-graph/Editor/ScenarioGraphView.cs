@@ -53,6 +53,7 @@ namespace ScenarioGraphSystem.Editor
                 var graphPosition = this.ChangeCoordinatesTo(contentViewContainer, evt.localMousePosition);
                 evt.menu.AppendAction("ノード/シナリオ", _ => CreateNode(ScenarioNodeType.Scenario, graphPosition));
                 evt.menu.AppendAction("ノード/ゲーム", _ => CreateNode(ScenarioNodeType.Game, graphPosition));
+                evt.menu.AppendAction("ノード/終了", _ => CreateNode(ScenarioNodeType.End, graphPosition));
                 evt.menu.AppendAction("グループ", _ => CreateGroup(graphPosition));
                 evt.menu.AppendAction("コメント", _ => CreateComment(graphPosition));
             }));
@@ -73,6 +74,8 @@ namespace ScenarioGraphSystem.Editor
         {
             if (Graph == null || rebuilding)
                 return;
+            if (SynchronizeAllSentenceOutputs())
+                EditorUtility.SetDirty(Graph);
             rebuilding = true;
             DeleteElements(graphElements.Where(element => element is not MiniMap).ToList());
             nodeViews.Clear();
@@ -91,6 +94,16 @@ namespace ScenarioGraphSystem.Editor
                 AddElement(new ScenarioCommentView(this, commentData));
 
             rebuilding = false;
+        }
+
+        /// <summary>SentenceDataのInspector編集後に、enum分岐と出力ポートを同期します。</summary>
+        public bool SynchronizeSentenceOutputsFromInspector()
+        {
+            if (Graph == null || rebuilding || !SynchronizeAllSentenceOutputs())
+                return false;
+            EditorUtility.SetDirty(Graph);
+            Reload();
+            return true;
         }
 
         /// <summary>Undo登録、Dirty化、Window更新を一箇所で行います。</summary>
@@ -123,6 +136,11 @@ namespace ScenarioGraphSystem.Editor
                 EditorUtility.DisplayDialog("開始ノード", "開始ノードはグラフにつき1個だけ配置できます。", "OK");
                 return;
             }
+            if (type == ScenarioNodeType.End && Graph.Nodes.Any(node => node.NodeType == ScenarioNodeType.End))
+            {
+                EditorUtility.DisplayDialog("終了ノード", "終了ノードはグラフにつき1個だけ配置できます。", "OK");
+                return;
+            }
             Mutate("ノードを作成", () =>
             {
                 var node = NodeData.Create(type, position);
@@ -145,33 +163,79 @@ namespace ScenarioGraphSystem.Editor
             Reload();
         }
 
-        public void AddGameOutput(string nodeGuid)
+        public void SetSentenceData(string nodeGuid, SentenceData sentenceData)
         {
             var node = Graph.FindNode(nodeGuid);
             if (node == null)
                 return;
-            var available = Enum.GetValues(typeof(GameResult)).Cast<GameResult>().Where(result => node.OutputPorts.All(port => port.GameResult != result)).ToList();
-            if (available.Count == 0)
+            Mutate("SentenceDataを変更", () =>
             {
-                EditorUtility.DisplayDialog("出力ポート", "追加できるGameResultがありません。enumへ新しい結果を追加してください。", "OK");
-                return;
-            }
-            var unused = available[0];
-            Mutate("ゲーム出力を追加", () => node.OutputPorts.Add(OutputPortData.Create(unused.ToString(), unused)));
+                node.SentenceData = sentenceData;
+                SynchronizeSentenceOutputs(node);
+            });
             Reload();
         }
 
-        public void RemoveGameOutput(string nodeGuid, string portGuid)
+        public void DebugNode(string nodeGuid)
         {
             var node = Graph.FindNode(nodeGuid);
-            if (node == null || !EditorUtility.DisplayDialog("出力ポートを削除", "接続Edgeも同時に削除します。", "削除", "キャンセル"))
+            if (node == null)
                 return;
-            Mutate("ゲーム出力を削除", () =>
+            if (node.NodeType == ScenarioNodeType.Scenario &&
+                (node.ScenarioDefinition == null || node.ScenarioDefinition.Csv == null))
             {
-                node.OutputPorts.RemoveAll(port => port.Guid == portGuid);
-                Graph.Edges.RemoveAll(edge => edge.OutputNodeGuid == nodeGuid && edge.OutputPortGuid == portGuid);
-            });
-            Reload();
+                EditorUtility.DisplayDialog("ノードデバッグ", "ノードにScenarioDefinitionとCSVを設定してください。", "OK");
+                return;
+            }
+            if (node.NodeType == ScenarioNodeType.Game &&
+                (node.GameRegistry == null || string.IsNullOrEmpty(node.GameId) || node.SentenceData == null ||
+                 node.SentenceData.GetBranchNames().Count == 0))
+            {
+                EditorUtility.DisplayDialog("ノードデバッグ", "ノードにゲームと、分岐を持つSentenceDataを設定してください。", "OK");
+                return;
+            }
+            ScenarioGraphNodeDebugSession.Start(Graph, node);
+        }
+
+        private bool SynchronizeAllSentenceOutputs()
+        {
+            var changed = false;
+            foreach (var node in Graph.Nodes.Where(node => node.NodeType == ScenarioNodeType.Game))
+                changed |= SynchronizeSentenceOutputs(node);
+            return changed;
+        }
+
+        private bool SynchronizeSentenceOutputs(NodeData node)
+        {
+            var before = node.OutputPorts.Select(port => (port.Guid, port.DisplayName, port.BranchName)).ToList();
+            var unused = node.OutputPorts.ToList();
+            var synchronized = new List<OutputPortData>();
+            var branchNames = node.SentenceData?.GetBranchNames() ?? Array.Empty<string>();
+            foreach (var branchName in branchNames)
+            {
+                var existing = unused.FirstOrDefault(port => port.BranchName == branchName) ??
+                               unused.FirstOrDefault(port => string.IsNullOrEmpty(port.BranchName) && port.DisplayName == branchName);
+                if (existing != null)
+                {
+                    unused.Remove(existing);
+                    existing.BranchName = branchName;
+                    existing.DisplayName = branchName;
+                    synchronized.Add(existing);
+                }
+                else
+                {
+                    synchronized.Add(OutputPortData.Create(branchName, branchName));
+                }
+            }
+
+            var removedGuids = unused.Select(port => port.Guid).ToHashSet();
+            node.OutputPorts.Clear();
+            node.OutputPorts.AddRange(synchronized);
+            if (removedGuids.Count > 0)
+                Graph.Edges.RemoveAll(edge => edge.OutputNodeGuid == node.Guid && removedGuids.Contains(edge.OutputPortGuid));
+
+            var after = node.OutputPorts.Select(port => (port.Guid, port.DisplayName, port.BranchName)).ToList();
+            return !before.SequenceEqual(after) || removedGuids.Count > 0;
         }
 
         /// <summary>検索語に一致するノード、グループ、コメントを選択してフレーム表示します。</summary>
@@ -363,7 +427,8 @@ namespace ScenarioGraphSystem.Editor
 
         private string SerializeSelection(IEnumerable<GraphElement> elements)
         {
-            var selectedNodes = elements.OfType<ScenarioNodeView>().Select(view => view.Data).Where(node => node.NodeType != ScenarioNodeType.Start).ToList();
+            var selectedNodes = elements.OfType<ScenarioNodeView>().Select(view => view.Data)
+                .Where(node => node.NodeType != ScenarioNodeType.Start && node.NodeType != ScenarioNodeType.End).ToList();
             var guids = selectedNodes.Select(node => node.Guid).ToHashSet();
             var data = new ClipboardData { nodes = selectedNodes, edges = Graph.Edges.Where(edge => guids.Contains(edge.OutputNodeGuid) && guids.Contains(edge.InputNodeGuid)).ToList() };
             return JsonUtility.ToJson(data);

@@ -10,11 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e78c3c66e95f4e3f927a1f6642f733ea, type: 3}
-  m_Name: MockGameData
+  m_Name: Mock2
   m_EditorClassIdentifier: Assembly-CSharp::ScenarioGraphSystem.MockGameData
+  branches: 0000000001000000000000000200000001000000
   branchNames:
   - Success
   - Failure
   - Cancelled
+  - dis
+  - ssss
+  completionResult: 1
   completionBranchName: Success
   completionDelaySeconds: 0.25

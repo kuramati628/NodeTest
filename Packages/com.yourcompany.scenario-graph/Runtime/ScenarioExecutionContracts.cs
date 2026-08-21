@@ -29,7 +29,14 @@ namespace ScenarioGraphSystem
     /// <summary>ゲームシーン内に1つだけ配置するゲーム実装の契約です。</summary>
     public interface IScenarioGame
     {
-        void StartGame(GameData definition, Action<GameResult> onCompleted);
+        void StartGame(SentenceData definition, Action<string> onCompleted);
+    }
+
+    /// <summary>Graph Editorから選択ノードを単体デバッグするPlay Mode側ホストです。</summary>
+    public interface IScenarioGraphDebugHost
+    {
+        bool CanDebugNode(ScenarioGraph graph, NodeData node, out string reason);
+        void DebugNode(ScenarioGraph graph, NodeData node);
     }
 
     /// <summary>登録シーンを読み込み、そのシーン内のゲーム実装をRunnerへ渡す契約です。</summary>

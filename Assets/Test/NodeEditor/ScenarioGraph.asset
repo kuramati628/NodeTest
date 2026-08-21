@@ -1,0 +1,213 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 691be3e7b11894d4385d112c11f67e6a, type: 3}
+  m_Name: ScenarioGraph
+  m_EditorClassIdentifier: ScenarioGraph.Runtime::ScenarioGraphSystem.ScenarioGraph
+  graphGuid: 5d99618080eb4287a46bc4e7d0e8fd5c
+  startNodeGuid: 27cc8706544c4b49b67074af79964018
+  nodes:
+  - guid: 27cc8706544c4b49b67074af79964018
+    displayName: "\u958B\u59CB"
+    nodeType: 0
+    position:
+      serializedVersion: 2
+      x: -41
+      y: 336
+      width: 110
+      height: 99
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 0}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: 9376189d45354168afd40d9edfe2cbd6
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: 49c10e0699264189963a0df97424bacd
+    displayName: "\u30B7\u30CA\u30EA\u30AA"
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 250
+      y: 324
+      width: 306
+      height: 129
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: e40a1429b0165ae4fb41c3a408314ce4, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: a30f4be393254f08aed5ff959efe0ce9
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: 34c1bba0a521418fa3a306f543e19ed2
+    displayName: "\u30B2\u30FC\u30E0"
+    nodeType: 2
+    position:
+      serializedVersion: 2
+      x: 652
+      y: 336
+      width: 358
+      height: 216
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 0}
+    gameRegistry: {fileID: 11400000, guid: 4e59ebc68f201a54a91b3e19e633cad3, type: 2}
+    gameId: 66d4372b328c43e5aef1eb80d9d5a86b
+    sentenceData: {fileID: 11400000, guid: 1c490bd72f9f48b6a3218c5177383f38, type: 2}
+    outputPorts:
+    - guid: 8fe33977217a45b1a35ca161dfa7a18e
+      displayName: Success
+      branchName: Success
+    - guid: eff989340c994a4da9750d5dd17a22fc
+      displayName: Failure
+      branchName: Failure
+    - guid: bac06635997948448aba82592df7df88
+      displayName: Cancelled
+      branchName: Cancelled
+  - guid: ce6329c9c0b34436aa22ef78938b2088
+    displayName: "\u30B7\u30CA\u30EA\u30AA"
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 1160
+      y: 358
+      width: 308
+      height: 129
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 7ace33e10e426c74b946b536f971f552, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: caca7cd35a55400eb2bd938eea6bcd31
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: a70740be403b47ce9960ba2022a43fa2
+    displayName: "\u30B7\u30CA\u30EA\u30AA"
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 1158
+      y: 86
+      width: 308
+      height: 129
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 2031cb00f5885d0428bff87c9df88ac2, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: 551e7dbe697942078f58b3f7bfe6bd8e
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: bc4cdd5a34f8415fbaef587e8c845a40
+    displayName: "\u30B7\u30CA\u30EA\u30AA"
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 1160
+      y: 620
+      width: 306
+      height: 129
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: e40a1429b0165ae4fb41c3a408314ce4, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: fb7b5348ce834998a4118c8dff2963a0
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: b847648b1bcf433bb9629f0af95d706c
+    displayName: "\u7D42\u4E86"
+    nodeType: 3
+    position:
+      serializedVersion: 2
+      x: 1744
+      y: 373
+      width: 110
+      height: 99
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 0}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts: []
+  edges:
+  - guid: dee9017ee2a64abea72e6caf542251c6
+    outputNodeGuid: 27cc8706544c4b49b67074af79964018
+    outputPortGuid: 9376189d45354168afd40d9edfe2cbd6
+    inputNodeGuid: 49c10e0699264189963a0df97424bacd
+  - guid: e4bb51d49da5427a9044ed2f4b2b7c2b
+    outputNodeGuid: 49c10e0699264189963a0df97424bacd
+    outputPortGuid: a30f4be393254f08aed5ff959efe0ce9
+    inputNodeGuid: 34c1bba0a521418fa3a306f543e19ed2
+  - guid: 03568340f3364b95b8b391df070252e6
+    outputNodeGuid: 34c1bba0a521418fa3a306f543e19ed2
+    outputPortGuid: 8fe33977217a45b1a35ca161dfa7a18e
+    inputNodeGuid: a70740be403b47ce9960ba2022a43fa2
+  - guid: 7209daae9240422d98ab09502570f5ae
+    outputNodeGuid: 34c1bba0a521418fa3a306f543e19ed2
+    outputPortGuid: eff989340c994a4da9750d5dd17a22fc
+    inputNodeGuid: ce6329c9c0b34436aa22ef78938b2088
+  - guid: 9d349b6f204b4436943d4b79fb9691ca
+    outputNodeGuid: 34c1bba0a521418fa3a306f543e19ed2
+    outputPortGuid: bac06635997948448aba82592df7df88
+    inputNodeGuid: bc4cdd5a34f8415fbaef587e8c845a40
+  - guid: 7305d1831d2c4c369fbca53d35deef5a
+    outputNodeGuid: a70740be403b47ce9960ba2022a43fa2
+    outputPortGuid: 551e7dbe697942078f58b3f7bfe6bd8e
+    inputNodeGuid: b847648b1bcf433bb9629f0af95d706c
+  - guid: 3b47d8559d424dce9c8a0d1951862c39
+    outputNodeGuid: ce6329c9c0b34436aa22ef78938b2088
+    outputPortGuid: caca7cd35a55400eb2bd938eea6bcd31
+    inputNodeGuid: b847648b1bcf433bb9629f0af95d706c
+  - guid: 815ae8ae4b034854ad38ad6ce8962b5f
+    outputNodeGuid: bc4cdd5a34f8415fbaef587e8c845a40
+    outputPortGuid: fb7b5348ce834998a4118c8dff2963a0
+    inputNodeGuid: b847648b1bcf433bb9629f0af95d706c
+  groups: []
+  comments: []
+  editorState:
+    viewPosition: {x: 231, y: 113, z: 0}
+    viewScale: {x: 0.8695652, y: 0.8695652, z: 1}
+    minimapVisible: 0

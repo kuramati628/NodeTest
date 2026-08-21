@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b71afb0aff504a54f80be1da082cd1fc, type: 3}
+  m_Name: GameRegistry
+  m_EditorClassIdentifier: ScenarioGraph.Runtime::ScenarioGraphSystem.GameRegistry
+  games:
+  - gameId: 66d4372b328c43e5aef1eb80d9d5a86b
+    displayName: game1
+    scene:
+      sceneGuid: 52261b9c36c85ef43bdda497b785c1f6
+      scenePath: Assets/Demo/ScenarioGraph/Scenes/game1.unity
+  - gameId: fe62dd2b592f4b0493aeabea5c8a982a
+    displayName: game2
+    scene:
+      sceneGuid: 407e9562ad5c01149a4df0275aa1a750
+      scenePath: Assets/Demo/ScenarioGraph/Scenes/game2.unity
+  - gameId: bec08c6d77404e9db33f96971dbafd16
+    displayName: test1
+    scene:
+      sceneGuid: 8a360997ba7492948843dd6c9fcc9e7b
+      scenePath: Assets/Scenes/test1.unity

@@ -10,12 +10,12 @@ namespace ScenarioGraphSystem
     /// </summary>
     public sealed class MockScenarioGame : MonoBehaviour, IScenarioGame
     {
-        [SerializeField] private GameResult fallbackResult = GameResult.Cancelled;
+        [SerializeField] private string fallbackResult = "Cancelled";
         private Coroutine completionCoroutine;
         private bool completed;
 
         /// <summary>ゲーム設定に従い、指定時間後に終了結果を1回だけ返します。</summary>
-        public void StartGame(GameData definition, Action<GameResult> onCompleted)
+        public void StartGame(SentenceData definition, Action<string> onCompleted)
         {
             if (completionCoroutine != null)
                 StopCoroutine(completionCoroutine);
@@ -32,7 +32,7 @@ namespace ScenarioGraphSystem
             completionCoroutine = StartCoroutine(CompleteAfterDelay(mockData, onCompleted));
         }
 
-        private IEnumerator CompleteAfterDelay(MockGameData data, Action<GameResult> onCompleted)
+        private IEnumerator CompleteAfterDelay(MockGameData data, Action<string> onCompleted)
         {
             if (data.CompletionDelaySeconds > 0f)
                 yield return new WaitForSeconds(data.CompletionDelaySeconds);
@@ -40,7 +40,7 @@ namespace ScenarioGraphSystem
             completionCoroutine = null;
         }
 
-        private void CompleteOnce(GameResult result, Action<GameResult> onCompleted)
+        private void CompleteOnce(string result, Action<string> onCompleted)
         {
             if (completed)
                 return;

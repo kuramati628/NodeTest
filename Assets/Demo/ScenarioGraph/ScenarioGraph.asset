@@ -20,8 +20,8 @@ MonoBehaviour:
     nodeType: 0
     position:
       serializedVersion: 2
-      x: 437
-      y: 194
+      x: 322
+      y: 356
       width: 110
       height: 99
     collapsed: 0
@@ -32,20 +32,20 @@ MonoBehaviour:
     scenarioDefinition: {fileID: 0}
     gameRegistry: {fileID: 0}
     gameId: 
-    gameData: {fileID: 0}
+    sentenceData: {fileID: 0}
     outputPorts:
     - guid: b537be1645e4418ca1596ef291d2f4e5
       displayName: "\u6B21\u3078"
-      gameResult: 0
+      branchName: 
   - guid: 819723d54b504e6cb6ff4deeebf4cbea
     displayName: "\u30B7\u30CA\u30EA\u30AA"
     nodeType: 1
     position:
       serializedVersion: 2
-      x: 676
-      y: 194
+      x: 593
+      y: 356
       width: 306
-      height: 104
+      height: 129
     collapsed: 0
     metadata:
       description: 
@@ -54,20 +54,20 @@ MonoBehaviour:
     scenarioDefinition: {fileID: 11400000, guid: e40a1429b0165ae4fb41c3a408314ce4, type: 2}
     gameRegistry: {fileID: 0}
     gameId: 
-    gameData: {fileID: 0}
+    sentenceData: {fileID: 0}
     outputPorts:
     - guid: faae20e87a8744d190d148fe969423a2
       displayName: "\u6B21\u3078"
-      gameResult: 0
+      branchName: 
   - guid: b3a0e0a18d8545d1a7d709238132411d
     displayName: "\u30B2\u30FC\u30E0"
     nodeType: 2
     position:
       serializedVersion: 2
-      x: 1174
-      y: 202
-      width: 358
-      height: 192
+      x: 1027
+      y: 356
+      width: 335
+      height: 264
     collapsed: 0
     metadata:
       description: 
@@ -76,23 +76,32 @@ MonoBehaviour:
     scenarioDefinition: {fileID: 0}
     gameRegistry: {fileID: 11400000, guid: c6c57e1db798f9e4da0a24acf46e5130, type: 2}
     gameId: 7e53a1abdf504f52b41cab74301f6ed8
-    gameData: {fileID: 11400000, guid: 1c490bd72f9f48b6a3218c5177383f38, type: 2}
+    sentenceData: {fileID: 11400000, guid: 9a6f41295e48ca541b22417ab3fb0ade, type: 2}
     outputPorts:
     - guid: 33395212982d43fc936b7451ac501ee5
       displayName: Success
-      gameResult: 0
+      branchName: Success
     - guid: 1aad13b773154968a25f0e4dd450f6ab
       displayName: Failure
-      gameResult: 1
+      branchName: Failure
+    - guid: a3fcc4fda730495397abc9e3ca9fd0e3
+      displayName: Cancelled
+      branchName: Cancelled
+    - guid: 7cce8c7ecc3f4a5e84e7e280b9f11450
+      displayName: dis
+      branchName: dis
+    - guid: 924576754cee44468c01909e823d2414
+      displayName: ssss
+      branchName: ssss
   - guid: 2fa62d5a69d141cda561549cc13152cd
     displayName: "\u30B7\u30CA\u30EA\u30AA"
     nodeType: 1
     position:
       serializedVersion: 2
-      x: 1854
-      y: 194
+      x: 1567
+      y: 130
       width: 308
-      height: 104
+      height: 129
     collapsed: 0
     metadata:
       description: 
@@ -101,20 +110,20 @@ MonoBehaviour:
     scenarioDefinition: {fileID: 11400000, guid: 2031cb00f5885d0428bff87c9df88ac2, type: 2}
     gameRegistry: {fileID: 0}
     gameId: 
-    gameData: {fileID: 0}
+    sentenceData: {fileID: 0}
     outputPorts:
     - guid: f0d990eaceca41158edfb986b97b2f7e
       displayName: "\u6B21\u3078"
-      gameResult: 0
+      branchName: 
   - guid: 3f21b2a77be24aa18663a549db8c9047
     displayName: "\u30B7\u30CA\u30EA\u30AA"
     nodeType: 1
     position:
       serializedVersion: 2
-      x: 1919
-      y: 543
+      x: 1593
+      y: 390
       width: 308
-      height: 104
+      height: 129
     collapsed: 0
     metadata:
       description: 
@@ -123,11 +132,52 @@ MonoBehaviour:
     scenarioDefinition: {fileID: 11400000, guid: 7ace33e10e426c74b946b536f971f552, type: 2}
     gameRegistry: {fileID: 0}
     gameId: 
-    gameData: {fileID: 0}
+    sentenceData: {fileID: 0}
     outputPorts:
     - guid: 4071aa9fa16043e892d624afb6a30ad7
       displayName: "\u6B21\u3078"
-      gameResult: 0
+      branchName: 
+  - guid: e000000000004a1395ac67b8f784af10
+    displayName: "\u7D42\u4E86"
+    nodeType: 3
+    position:
+      serializedVersion: 2
+      x: 2080
+      y: 403
+      width: 110
+      height: 99
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 0}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts: []
+  - guid: d2cb9cd7d3cf483297390c3d3c76bc56
+    displayName: "\u30B7\u30CA\u30EA\u30AA"
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 1567
+      y: 604
+      width: 308
+      height: 129
+    collapsed: 0
+    metadata:
+      description: 
+      tags: []
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 7ace33e10e426c74b946b536f971f552, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    sentenceData: {fileID: 0}
+    outputPorts:
+    - guid: c0e5b3e733a84e59a3e3cb7a0488a816
+      displayName: "\u6B21\u3078"
+      branchName: 
   edges:
   - guid: e546ed25d3864fc58cad4e563088e5c0
     outputNodeGuid: 7b67c7542a994b99a6358a08fe32eb05
@@ -145,9 +195,25 @@ MonoBehaviour:
     outputNodeGuid: b3a0e0a18d8545d1a7d709238132411d
     outputPortGuid: 1aad13b773154968a25f0e4dd450f6ab
     inputNodeGuid: 3f21b2a77be24aa18663a549db8c9047
+  - guid: e200000000004a1395ac67b8f784af10
+    outputNodeGuid: 2fa62d5a69d141cda561549cc13152cd
+    outputPortGuid: f0d990eaceca41158edfb986b97b2f7e
+    inputNodeGuid: e000000000004a1395ac67b8f784af10
+  - guid: e300000000004a1395ac67b8f784af10
+    outputNodeGuid: 3f21b2a77be24aa18663a549db8c9047
+    outputPortGuid: 4071aa9fa16043e892d624afb6a30ad7
+    inputNodeGuid: e000000000004a1395ac67b8f784af10
+  - guid: 8be5ce24657a49c49f3fe275a0047afd
+    outputNodeGuid: d2cb9cd7d3cf483297390c3d3c76bc56
+    outputPortGuid: c0e5b3e733a84e59a3e3cb7a0488a816
+    inputNodeGuid: e000000000004a1395ac67b8f784af10
+  - guid: 9c76221b6d814089a02a990901fb034a
+    outputNodeGuid: b3a0e0a18d8545d1a7d709238132411d
+    outputPortGuid: a3fcc4fda730495397abc9e3ca9fd0e3
+    inputNodeGuid: d2cb9cd7d3cf483297390c3d3c76bc56
   groups: []
   comments: []
   editorState:
-    viewPosition: {x: -110, y: 27, z: 0}
+    viewPosition: {x: -155, y: 121, z: 0}
     viewScale: {x: 0.8695652, y: 0.8695652, z: 1}
     minimapVisible: 1
