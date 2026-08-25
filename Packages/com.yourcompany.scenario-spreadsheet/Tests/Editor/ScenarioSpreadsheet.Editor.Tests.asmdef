@@ -1,0 +1,16 @@
+{
+  "name": "ScenarioSpreadsheet.Editor.Tests",
+  "rootNamespace": "ScenarioGraphSystem.Editor.Spreadsheet.Tests",
+  "references": [
+    "ScenarioSpreadsheet.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false,
+  "overrideReferences": false,
+  "noEngineReferences": false
+}

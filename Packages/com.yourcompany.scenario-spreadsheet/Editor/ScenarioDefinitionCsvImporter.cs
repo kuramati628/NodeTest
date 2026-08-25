@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,7 +10,7 @@ using UnityEngine;
 
 namespace ScenarioGraphSystem.Editor.Spreadsheet
 {
-    /// <summary>Spreadsheet取得からCSV更新、ScenarioDefinitionへの割り当てまでを実行します。</summary>
+    /// <summary>Spreadsheet全体の取得からCSV・ScenarioDefinition・Graphの同期までを実行します。</summary>
     public static class ScenarioDefinitionCsvImporter
     {
         /// <summary>
@@ -28,25 +29,32 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             {
                 var apiKey = profile.Credential.ResolveApiKey();
                 var client = new GoogleSheetsClient();
-                var sheetData = await client.FetchAsync(
+                var spreadsheet = await client.FetchSpreadsheetAsync(
                     apiKey,
                     profile.SpreadsheetId,
-                    profile.SheetGid,
-                    profile.FallbackSheetName,
                     profile.CellRange,
+                    profile.ExcludedSheetNames,
                     cancellationToken);
-                var csv = ScenarioCsvSerializer.Serialize(sheetData);
-                if (string.IsNullOrEmpty(csv))
-                    return ScenarioSpreadsheetImportResult.Failure("Spreadsheetに出力可能なセルがありません。");
+                var outputs = BuildOutputs(profile, spreadsheet);
+                if (outputs.Count == 0)
+                    return ScenarioSpreadsheetImportResult.Failure("対象シートに出力可能なセルがありません。");
 
-                var assetPath = BuildAssetPath(profile);
-                WriteCsvAsset(assetPath, csv);
-                var csvAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
-                if (csvAsset == null)
-                    return ScenarioSpreadsheetImportResult.Failure($"更新したCSVをTextAssetとして読み込めませんでした: {assetPath}");
+                foreach (var output in outputs)
+                    WriteCsvAsset(output.CsvPath, output.Csv);
 
-                AssignCsv(profile.TargetDefinition, csvAsset);
-                return ScenarioSpreadsheetImportResult.Success(assetPath);
+                foreach (var output in outputs)
+                {
+                    var csvAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(output.CsvPath);
+                    if (csvAsset == null)
+                        return ScenarioSpreadsheetImportResult.Failure($"生成したCSVをTextAssetとして読み込めませんでした: {output.CsvPath}");
+                    output.Definition = LoadOrCreateDefinition(output.DefinitionPath);
+                    AssignCsv(output.Definition, csvAsset);
+                }
+
+                if (profile.TargetGraph != null)
+                    ScenarioLabelGraphSynchronizer.Synchronize(profile, outputs);
+
+                return ScenarioSpreadsheetImportResult.Success(outputs.Select(output => output.CsvPath).ToArray());
             }
             catch (OperationCanceledException)
             {
@@ -63,22 +71,20 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
         {
             if (profile == null)
                 return "Import Profileが設定されていません。";
-            if (profile.TargetDefinition == null)
-                return "更新対象のScenarioDefinitionが設定されていません。";
             if (profile.Credential == null)
                 return "GoogleSheetsCredentialが設定されていません。";
             if (string.IsNullOrWhiteSpace(profile.Credential.ResolveApiKey()))
                 return $"APIキーがありません。環境変数『{profile.Credential.EnvironmentVariableName}』またはCredentialを設定してください。";
             if (string.IsNullOrWhiteSpace(profile.SpreadsheetId))
                 return "Spreadsheet IDが設定されていません。";
-            if (profile.SheetGid < 0 && string.IsNullOrWhiteSpace(profile.FallbackSheetName))
-                return "Sheet GIDまたはフォールバックシート名を設定してください。";
             if (profile.CellRange.Contains("!"))
                 return "Cell Rangeにはシート名を含めず、A1:Z1000の形式で指定してください。";
 
             try
             {
-                BuildAssetPath(profile);
+                ScenarioGeneratedPathBuilder.NormalizeOutputFolder(profile.OutputFolder);
+                if (profile.TargetGraph != null && string.IsNullOrEmpty(AssetDatabase.GetAssetPath(profile)))
+                    return "Graph同期を行うImport Profileは保存済みアセットである必要があります。";
             }
             catch (Exception exception)
             {
@@ -87,28 +93,99 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             return string.Empty;
         }
 
-        private static string BuildAssetPath(ScenarioSpreadsheetImportProfile profile)
+        private static List<GeneratedScenarioSection> BuildOutputs(
+            ScenarioSpreadsheetImportProfile profile,
+            GoogleSpreadsheetData spreadsheet)
         {
-            var folder = profile.OutputFolder.Replace('\\', '/').TrimEnd('/');
-            if (!string.Equals(folder, "Assets", StringComparison.Ordinal) &&
-                !folder.StartsWith("Assets/", StringComparison.Ordinal))
+            var outputs = new List<GeneratedScenarioSection>();
+            var usedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var sheet in spreadsheet.sheets ?? Array.Empty<GoogleSheetData>())
             {
-                throw new InvalidOperationException("出力フォルダーはAssetsまたはAssets/以下を指定してください。");
-            }
-            if (folder.Split('/').Contains(".."))
-                throw new InvalidOperationException("出力フォルダーに相対移動 '..' は使用できません。");
+                if (!HasOutputRows(sheet?.values))
+                    continue;
 
-            var fileName = profile.OutputFileName;
-            if (string.IsNullOrWhiteSpace(fileName) || fileName != Path.GetFileName(fileName) ||
-                fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            {
-                throw new InvalidOperationException("出力ファイル名が不正です。");
-            }
-            if (!string.Equals(Path.GetExtension(fileName), ".csv", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("出力ファイル名の拡張子は.csvにしてください。");
+                if (!ScenarioLabelSplitter.HasDefinition(sheet))
+                {
+                    AddOutput(
+                        profile, spreadsheet, sheet, 0, string.Empty, string.Empty, string.Empty,
+                        false, ScenarioCsvSerializer.Serialize(sheet.values), outputs, usedPaths);
+                    continue;
+                }
 
-            return $"{folder}/{fileName}";
+                var blocks = ScenarioLabelSplitter.SplitBlocks(sheet);
+                foreach (var block in blocks)
+                {
+                    var blockName = $"{sheet.title}-{block.BlockNumber}";
+                    if (block.PrefixRows.Count > 0)
+                    {
+                        AddOutput(
+                            profile, spreadsheet, sheet, block.BlockNumber, blockName, string.Empty, string.Empty,
+                            false, ScenarioCsvSerializer.Serialize(block.PrefixRows.ToArray()), outputs, usedPaths);
+                    }
+
+                    for (var index = 0; index < block.Sections.Count; index++)
+                    {
+                        var section = block.Sections[index];
+                        var csv = ScenarioCsvSerializer.Serialize(section.Rows.ToArray());
+                        if (string.IsNullOrEmpty(csv))
+                            throw new InvalidOperationException($"シート『{sheet.title}』のLabel『{section.Label}』に出力可能なシナリオ命令がありません。");
+
+                        var targetLabel = !string.IsNullOrEmpty(section.JumpTarget)
+                            ? section.JumpTarget
+                            : index + 1 < block.Sections.Count ? block.Sections[index + 1].Label : string.Empty;
+                        var targetKey = string.IsNullOrEmpty(targetLabel)
+                            ? string.Empty
+                            : BuildStableKey(spreadsheet.spreadsheetId, sheet.sheetId, block.BlockNumber, targetLabel);
+                        AddOutput(
+                            profile, spreadsheet, sheet, block.BlockNumber, blockName, section.Label, targetKey,
+                            section.EndsWithGoToGame, csv, outputs, usedPaths);
+                    }
+                }
+            }
+            return outputs;
         }
+
+        private static void AddOutput(
+            ScenarioSpreadsheetImportProfile profile,
+            GoogleSpreadsheetData spreadsheet,
+            GoogleSheetData sheet,
+            int blockNumber,
+            string blockName,
+            string label,
+            string transitionTargetKey,
+            bool manualGameTransition,
+            string csv,
+            ICollection<GeneratedScenarioSection> outputs,
+            ISet<string> usedPaths)
+        {
+            var paths = ScenarioGeneratedPathBuilder.Build(
+                profile.OutputFolder,
+                spreadsheet.title,
+                sheet.title,
+                blockName,
+                label);
+            if (!usedPaths.Add(paths.CsvPath) || !usedPaths.Add(paths.DefinitionPath))
+                throw new InvalidOperationException($"生成パスが重複します。シート名またはLabel名を確認してください: {sheet.title}/{label}");
+
+            outputs.Add(new GeneratedScenarioSection(
+                BuildStableKey(spreadsheet.spreadsheetId, sheet.sheetId, blockNumber, label),
+                sheet.sheetId,
+                sheet.title,
+                blockNumber,
+                blockName,
+                label,
+                transitionTargetKey,
+                manualGameTransition,
+                paths.CsvPath,
+                paths.DefinitionPath,
+                csv));
+        }
+
+        private static string BuildStableKey(string spreadsheetId, int sheetId, int blockNumber, string label)
+            => $"{spreadsheetId}:{sheetId}:{blockNumber}:{(string.IsNullOrEmpty(label) ? "@main" : label)}";
+
+        private static bool HasOutputRows(IEnumerable<string[]> rows)
+            => rows != null && rows.Any(row => row != null && row.Any(cell => !string.IsNullOrWhiteSpace(cell)));
 
         private static void WriteCsvAsset(string assetPath, string csv)
         {
@@ -138,26 +215,97 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             EditorUtility.SetDirty(definition);
             AssetDatabase.SaveAssetIfDirty(definition);
         }
+
+        private static ScenarioDefinition LoadOrCreateDefinition(string assetPath)
+        {
+            var definition = AssetDatabase.LoadAssetAtPath<ScenarioDefinition>(assetPath);
+            if (definition != null)
+                return definition;
+            if (AssetDatabase.LoadMainAssetAtPath(assetPath) != null)
+                throw new InvalidOperationException($"ScenarioDefinitionの生成先に別種のアセットがあります: {assetPath}");
+
+            var directory = Path.GetDirectoryName(assetPath)?.Replace('\\', '/');
+            EnsureAssetFolder(directory);
+            definition = ScriptableObject.CreateInstance<ScenarioDefinition>();
+            definition.name = Path.GetFileNameWithoutExtension(assetPath);
+            AssetDatabase.CreateAsset(definition, assetPath);
+            return definition;
+        }
+
+        private static void EnsureAssetFolder(string assetFolder)
+        {
+            if (string.IsNullOrEmpty(assetFolder) || AssetDatabase.IsValidFolder(assetFolder))
+                return;
+            var parent = Path.GetDirectoryName(assetFolder)?.Replace('\\', '/');
+            EnsureAssetFolder(parent);
+            AssetDatabase.CreateFolder(parent, Path.GetFileName(assetFolder));
+        }
+
+        internal sealed class GeneratedScenarioSection
+        {
+            public GeneratedScenarioSection(
+                string stableKey,
+                int sheetId,
+                string sheetName,
+                int blockNumber,
+                string blockName,
+                string label,
+                string transitionTargetKey,
+                bool manualGameTransition,
+                string csvPath,
+                string definitionPath,
+                string csv)
+            {
+                StableKey = stableKey;
+                SheetId = sheetId;
+                SheetName = sheetName;
+                BlockNumber = blockNumber;
+                BlockName = blockName;
+                Label = label;
+                TransitionTargetKey = transitionTargetKey;
+                ManualGameTransition = manualGameTransition;
+                CsvPath = csvPath;
+                DefinitionPath = definitionPath;
+                Csv = csv;
+            }
+
+            public string StableKey { get; }
+            public int SheetId { get; }
+            public string SheetName { get; }
+            public int BlockNumber { get; }
+            public string BlockName { get; }
+            public string Label { get; }
+            public string DisplayName => string.IsNullOrEmpty(Label)
+                ? string.IsNullOrEmpty(BlockName) ? SheetName : BlockName
+                : string.IsNullOrEmpty(BlockName) ? Label : $"{BlockName}/{Label}";
+            public string TransitionTargetKey { get; }
+            public bool ManualGameTransition { get; }
+            public string CsvPath { get; }
+            public string DefinitionPath { get; }
+            public string Csv { get; }
+            public ScenarioDefinition Definition { get; set; }
+        }
     }
 
     /// <summary>Spreadsheetインポートの成否と出力先を返す結果です。</summary>
     public readonly struct ScenarioSpreadsheetImportResult
     {
-        private ScenarioSpreadsheetImportResult(bool succeeded, string message, string assetPath)
+        private ScenarioSpreadsheetImportResult(bool succeeded, string message, IReadOnlyList<string> assetPaths)
         {
             Succeeded = succeeded;
             Message = message;
-            AssetPath = assetPath;
+            AssetPaths = assetPaths ?? Array.Empty<string>();
         }
 
         public bool Succeeded { get; }
         public string Message { get; }
-        public string AssetPath { get; }
+        public IReadOnlyList<string> AssetPaths { get; }
+        public string AssetPath => AssetPaths.FirstOrDefault() ?? string.Empty;
 
-        public static ScenarioSpreadsheetImportResult Success(string assetPath)
-            => new(true, $"CSVを更新しました: {assetPath}", assetPath);
+        public static ScenarioSpreadsheetImportResult Success(IReadOnlyList<string> assetPaths)
+            => new(true, $"CSVを{assetPaths.Count}件更新しました: {string.Join(", ", assetPaths)}", assetPaths);
 
         public static ScenarioSpreadsheetImportResult Failure(string message)
-            => new(false, message, string.Empty);
+            => new(false, message, Array.Empty<string>());
     }
 }

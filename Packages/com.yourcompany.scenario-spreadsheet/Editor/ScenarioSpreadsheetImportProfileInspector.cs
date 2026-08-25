@@ -29,7 +29,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             }
 
             EditorGUILayout.HelpBox(
-                "同じ出力パスへCSVを上書きするため、TextAssetのGUIDとScenarioDefinition参照は維持されます。",
+                "除外シート以外をすべて取得し、Spreadsheet名/CSVとSpreadsheet名/Assetへ分けて生成します。DefineLabelごとにSheet名-Nブロックを作り、直前のGoToGameはCSVから除外します。Gameノードと接続は手動設定し、ImporterはLabel内のjump Edgeだけを同期します。",
                 MessageType.Info);
         }
 

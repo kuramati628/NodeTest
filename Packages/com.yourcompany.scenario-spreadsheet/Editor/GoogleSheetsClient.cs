@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -12,13 +13,12 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
     {
         private const string ApiBaseUrl = "https://sheets.googleapis.com/v4/spreadsheets";
 
-        /// <summary>GIDまたはシート名を解決し、指定範囲のセル値を取得します。</summary>
-        public async UniTask<GoogleSheetData> FetchAsync(
+        /// <summary>Spreadsheet名と、除外対象以外のすべてのGRIDシートを取得します。</summary>
+        public async UniTask<GoogleSpreadsheetData> FetchSpreadsheetAsync(
             string apiKey,
             string spreadsheetId,
-            int sheetGid,
-            string fallbackSheetName,
             string cellRange,
+            IEnumerable<string> excludedSheetNames,
             CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -26,31 +26,57 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             if (string.IsNullOrWhiteSpace(spreadsheetId))
                 throw new InvalidOperationException("Spreadsheet IDが設定されていません。");
 
-            var sheetName = sheetGid >= 0
-                ? await ResolveSheetNameAsync(apiKey, spreadsheetId, sheetGid, cancellationToken)
-                : fallbackSheetName;
-            if (string.IsNullOrWhiteSpace(sheetName))
-                throw new InvalidOperationException("取得対象のシート名を解決できません。");
+            var fields = Uri.EscapeDataString("properties.title,sheets.properties(sheetId,title,sheetType)");
+            var metadataUrl = $"{ApiBaseUrl}/{Uri.EscapeDataString(spreadsheetId)}?fields={fields}&key={Uri.EscapeDataString(apiKey)}";
+            var metadataJson = await GetJsonAsync(metadataUrl, cancellationToken);
+            var metadata = JsonConvert.DeserializeObject<GoogleSpreadsheetMetadata>(metadataJson)
+                           ?? throw new InvalidOperationException("Spreadsheetのメタデータを解析できませんでした。");
+            var spreadsheetTitle = metadata.properties?.title?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(spreadsheetTitle))
+                throw new InvalidOperationException("Spreadsheet名を取得できませんでした。");
 
-            var a1Range = BuildA1Range(sheetName, cellRange);
-            var url = $"{ApiBaseUrl}/{Uri.EscapeDataString(spreadsheetId)}/values/{Uri.EscapeDataString(a1Range)}?key={Uri.EscapeDataString(apiKey)}";
-            var json = await GetJsonAsync(url, cancellationToken);
-            return JsonConvert.DeserializeObject<GoogleSheetData>(json)
-                   ?? throw new InvalidOperationException("Google Sheets APIの応答を解析できませんでした。");
+            var targets = SelectTargetSheets(metadata, excludedSheetNames);
+            if (targets.Length == 0)
+                throw new InvalidOperationException("インポート対象のシートがありません。");
+
+            var sheets = new List<GoogleSheetData>(targets.Length);
+            foreach (var target in targets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var a1Range = BuildA1Range(target.title, cellRange);
+                var url = $"{ApiBaseUrl}/{Uri.EscapeDataString(spreadsheetId)}/values/{Uri.EscapeDataString(a1Range)}?key={Uri.EscapeDataString(apiKey)}";
+                var json = await GetJsonAsync(url, cancellationToken);
+                var values = JsonConvert.DeserializeObject<GoogleSheetData>(json)
+                             ?? throw new InvalidOperationException($"シート『{target.title}』の応答を解析できませんでした。");
+                values.sheetId = target.sheetId;
+                values.title = target.title.Trim();
+                sheets.Add(values);
+            }
+
+            return new GoogleSpreadsheetData
+            {
+                spreadsheetId = spreadsheetId,
+                title = spreadsheetTitle,
+                sheets = sheets.ToArray()
+            };
         }
 
-        private static async UniTask<string> ResolveSheetNameAsync(
-            string apiKey,
-            string spreadsheetId,
-            int sheetGid,
-            CancellationToken cancellationToken)
+        internal static GoogleSheetProperties[] SelectTargetSheets(
+            GoogleSpreadsheetMetadata metadata,
+            IEnumerable<string> excludedSheetNames)
         {
-            var url = $"{ApiBaseUrl}/{Uri.EscapeDataString(spreadsheetId)}?fields=sheets.properties&key={Uri.EscapeDataString(apiKey)}";
-            var json = await GetJsonAsync(url, cancellationToken);
-            var metadata = JsonConvert.DeserializeObject<GoogleSpreadsheetMetadata>(json);
-            var sheet = metadata?.sheets?.FirstOrDefault(item => item?.properties?.sheetId == sheetGid);
-            return sheet?.properties?.title
-                   ?? throw new InvalidOperationException($"sheet gid={sheetGid} に対応するシートが見つかりませんでした。");
+            var excluded = new HashSet<string>(
+                (excludedSheetNames ?? Array.Empty<string>())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+            return (metadata?.sheets ?? Array.Empty<GoogleSheetWrapper>())
+                .Select(sheet => sheet?.properties)
+                .Where(properties => properties != null &&
+                                     (string.IsNullOrEmpty(properties.sheetType) || properties.sheetType == "GRID") &&
+                                     !string.IsNullOrWhiteSpace(properties.title) &&
+                                     !excluded.Contains(properties.title.Trim()))
+                .ToArray();
         }
 
         private static async UniTask<string> GetJsonAsync(string url, CancellationToken cancellationToken)
@@ -88,13 +114,30 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
     [Serializable]
     internal sealed class GoogleSheetData
     {
+        public int sheetId;
+        public string title;
         public string[][] values;
+    }
+
+    [Serializable]
+    internal sealed class GoogleSpreadsheetData
+    {
+        public string spreadsheetId;
+        public string title;
+        public GoogleSheetData[] sheets;
     }
 
     [Serializable]
     internal sealed class GoogleSpreadsheetMetadata
     {
+        public GoogleSpreadsheetProperties properties;
         public GoogleSheetWrapper[] sheets;
+    }
+
+    [Serializable]
+    internal sealed class GoogleSpreadsheetProperties
+    {
+        public string title;
     }
 
     [Serializable]
@@ -108,5 +151,6 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
     {
         public int sheetId;
         public string title;
+        public string sheetType;
     }
 }

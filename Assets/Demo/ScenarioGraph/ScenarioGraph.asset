@@ -69,7 +69,7 @@ MonoBehaviour:
       x: 1027
       y: 340
       width: 335
-      height: 264
+      height: 284
     collapsed: 0
     metadata:
       description: 
@@ -185,6 +185,126 @@ MonoBehaviour:
     - guid: c0e5b3e733a84e59a3e3cb7a0488a816
       displayName: "\u6B21\u3078"
       branchName: 
+  - guid: 01ce5df62c7c4eb58d13180bba667564
+    displayName: 2
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 2379
+      y: 350
+      width: 260
+      height: 180
+    collapsed: 0
+    metadata:
+      description: 
+      tags:
+      - scenario-spreadsheet:354c5116af658394eaa986369cfcd6fa:1C0puBNuWNQSMZWeURF4tNCrL4n1FYEX3KcLgDj3SLiE:1300168177:0:@main
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 1ba27b5b573fce14a9984fff2b2cef33, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    attachedData: {fileID: 0}
+    branchResolver: {fileID: 0}
+    outputPorts:
+    - guid: bceb2e822af94870b35392d6df1949ca
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: 101b718ded6b4e6ca6180b16008899ba
+    displayName: 1-1
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 2379
+      y: 130
+      width: 260
+      height: 180
+    collapsed: 0
+    metadata:
+      description: 
+      tags:
+      - scenario-spreadsheet:354c5116af658394eaa986369cfcd6fa:1C0puBNuWNQSMZWeURF4tNCrL4n1FYEX3KcLgDj3SLiE:551121422:1:@main
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 5bf578218dd78ef45a5e752e22196c08, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    attachedData: {fileID: 0}
+    branchResolver: {fileID: 0}
+    outputPorts:
+    - guid: 75baf3df971d4316aa804e70e96adcf4
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: acd1bbcbc41d45f19cb503e6264790c6
+    displayName: 1-1/Success
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 2379
+      y: 350
+      width: 260
+      height: 180
+    collapsed: 0
+    metadata:
+      description: 
+      tags:
+      - scenario-spreadsheet:354c5116af658394eaa986369cfcd6fa:1C0puBNuWNQSMZWeURF4tNCrL4n1FYEX3KcLgDj3SLiE:551121422:1:Success
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 7075aa1bd523e31419b2b907c517c69d, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    attachedData: {fileID: 0}
+    branchResolver: {fileID: 0}
+    outputPorts:
+    - guid: 85fb70a00b534acba7c10e82709411e8
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: fed059ae47a84f158307521263a63a88
+    displayName: 1-1/HugeSuccess
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 2379
+      y: 570
+      width: 260
+      height: 180
+    collapsed: 0
+    metadata:
+      description: 
+      tags:
+      - scenario-spreadsheet:354c5116af658394eaa986369cfcd6fa:1C0puBNuWNQSMZWeURF4tNCrL4n1FYEX3KcLgDj3SLiE:551121422:1:HugeSuccess
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: dca4d3fd806f88c42b63bcd5a252673c, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    attachedData: {fileID: 0}
+    branchResolver: {fileID: 0}
+    outputPorts:
+    - guid: f0063996fad0402aa13211d1e10e51a3
+      displayName: "\u6B21\u3078"
+      branchName: 
+  - guid: 6a2d3f2affa0444794d7c018d09da0a4
+    displayName: 1-1/Label_End
+    nodeType: 1
+    position:
+      serializedVersion: 2
+      x: 2379
+      y: 790
+      width: 260
+      height: 180
+    collapsed: 0
+    metadata:
+      description: 
+      tags:
+      - scenario-spreadsheet:354c5116af658394eaa986369cfcd6fa:1C0puBNuWNQSMZWeURF4tNCrL4n1FYEX3KcLgDj3SLiE:551121422:1:Label_End
+      customData: 
+    scenarioDefinition: {fileID: 11400000, guid: 80703145aece3e34a8225dafc089ef17, type: 2}
+    gameRegistry: {fileID: 0}
+    gameId: 
+    attachedData: {fileID: 0}
+    branchResolver: {fileID: 0}
+    outputPorts:
+    - guid: a6c09d6a8d964595bc704f3122b71687
+      displayName: "\u6B21\u3078"
+      branchName: 
   edges:
   - guid: e546ed25d3864fc58cad4e563088e5c0
     outputNodeGuid: 7b67c7542a994b99a6358a08fe32eb05
@@ -218,6 +338,18 @@ MonoBehaviour:
     outputNodeGuid: b3a0e0a18d8545d1a7d709238132411d
     outputPortGuid: a3fcc4fda730495397abc9e3ca9fd0e3
     inputNodeGuid: d2cb9cd7d3cf483297390c3d3c76bc56
+  - guid: 8f8a1720ab2d46c188f2c701500af231
+    outputNodeGuid: acd1bbcbc41d45f19cb503e6264790c6
+    outputPortGuid: 85fb70a00b534acba7c10e82709411e8
+    inputNodeGuid: 6a2d3f2affa0444794d7c018d09da0a4
+  - guid: a419586c9f8a4dc1af89717ed7d1a50d
+    outputNodeGuid: fed059ae47a84f158307521263a63a88
+    outputPortGuid: f0063996fad0402aa13211d1e10e51a3
+    inputNodeGuid: 6a2d3f2affa0444794d7c018d09da0a4
+  - guid: 37596a3fd81746b59a96a2cabb4818a8
+    outputNodeGuid: 6a2d3f2affa0444794d7c018d09da0a4
+    outputPortGuid: a6c09d6a8d964595bc704f3122b71687
+    inputNodeGuid: e000000000004a1395ac67b8f784af10
   groups: []
   comments: []
   editorState:

@@ -7,8 +7,10 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
     internal static class ScenarioCsvSerializer
     {
         public static string Serialize(GoogleSheetData sheetData)
+            => Serialize(sheetData?.values);
+
+        public static string Serialize(string[][] rows)
         {
-            var rows = sheetData?.values;
             if (rows == null || rows.Length == 0)
                 return string.Empty;
 
