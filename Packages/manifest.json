@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "com.yourcompany.scenario-graph": "file:com.yourcompany.scenario-graph",
-    "com.yourcompany.scenario-spreadsheet": "file:com.yourcompany.scenario-spreadsheet",
+    "com.cysharp.r3": "https://github.com/Cysharp/R3.git?path=src/R3.Unity/Assets/R3.Unity",
     "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
+    "com.github-glitchenzo.nugetforunity": "https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity",
     "com.unity.ai.navigation": "2.0.12",
     "com.unity.collab-proxy": "2.12.4",
     "com.unity.ide.rider": "3.0.39",
@@ -15,6 +15,8 @@
     "com.unity.timeline": "1.8.12",
     "com.unity.ugui": "2.0.0",
     "com.unity.visualscripting": "1.9.11",
+    "com.yourcompany.scenario-graph": "file:com.yourcompany.scenario-graph",
+    "com.yourcompany.scenario-spreadsheet": "file:com.yourcompany.scenario-spreadsheet",
     "com.unity.modules.accessibility": "1.0.0",
     "com.unity.modules.adaptiveperformance": "1.0.0",
     "com.unity.modules.ai": "1.0.0",

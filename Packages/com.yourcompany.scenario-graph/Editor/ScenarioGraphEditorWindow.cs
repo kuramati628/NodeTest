@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using R3;
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEditor.Experimental.GraphView;
@@ -227,6 +228,7 @@ namespace ScenarioGraphSystem.Editor
         private const string PendingKey = "ScenarioGraph.NodeDebug.Pending";
         private const string GraphPathKey = "ScenarioGraph.NodeDebug.GraphPath";
         private const string NodeGuidKey = "ScenarioGraph.NodeDebug.NodeGuid";
+        private static IDisposable gameDebugSubscription;
 
         static ScenarioGraphNodeDebugSession()
         {
@@ -290,7 +292,11 @@ namespace ScenarioGraphSystem.Editor
             if (state == PlayModeStateChange.EnteredPlayMode && SessionState.GetBool(PendingKey, false))
                 EditorApplication.delayCall += ExecutePending;
             else if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                gameDebugSubscription?.Dispose();
+                gameDebugSubscription = null;
                 ClearPending();
+            }
         }
 
         private static void ExecutePending()
@@ -323,7 +329,21 @@ namespace ScenarioGraphSystem.Editor
 
                 try
                 {
-                    game.StartGame(node.AttachedData, result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"));
+                    gameDebugSubscription?.Dispose();
+                    var play = game.StartGame(node.AttachedData);
+                    if (play == null)
+                    {
+                        Debug.LogError("[ScenarioGraph] IScenarioGame.StartGameがObservableを返しませんでした。");
+                        return;
+                    }
+                    gameDebugSubscription = play.Take(1).Subscribe(
+                        result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"),
+                        exception => Debug.LogError($"[ScenarioGraph] ゲームデバッグ通知でエラーが発生しました: {exception.Message}"),
+                        result =>
+                        {
+                            if (result.IsFailure)
+                                Debug.LogError($"[ScenarioGraph] ゲームデバッグに失敗しました: {result.Exception.Message}");
+                        });
                 }
                 catch (Exception exception)
                 {

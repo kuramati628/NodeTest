@@ -1,0 +1,17 @@
+{
+  "name": "ScenarioGraph.Runtime.Tests",
+  "rootNamespace": "ScenarioGraphSystem.Tests",
+  "references": [
+    "ScenarioGraph.Runtime",
+    "R3"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false,
+  "overrideReferences": false,
+  "noEngineReferences": false
+}

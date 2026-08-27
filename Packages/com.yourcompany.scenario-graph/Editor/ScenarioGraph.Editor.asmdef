@@ -2,7 +2,8 @@
   "name": "ScenarioGraph.Editor",
   "rootNamespace": "ScenarioGraphSystem.Editor",
   "references": [
-    "ScenarioGraph.Runtime"
+    "ScenarioGraph.Runtime",
+    "R3"
   ],
   "includePlatforms": [
     "Editor"

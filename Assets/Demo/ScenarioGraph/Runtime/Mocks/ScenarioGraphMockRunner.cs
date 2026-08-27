@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using R3;
 using UnityEngine;
 
@@ -121,8 +120,8 @@ namespace ScenarioGraphSystem
             private readonly MonoBehaviour host;
             private readonly float delaySeconds;
             private readonly int autoCompleteCount;
-            private readonly Subject<Unit> completed = new();
-            private Coroutine completionCoroutine;
+            private Observer<Unit> currentObserver;
+            private IDisposable timerSubscription;
             private int playCount;
 
             public MockScenarioPlayer(MonoBehaviour host, float delaySeconds, int autoCompleteCount)
@@ -132,43 +131,72 @@ namespace ScenarioGraphSystem
                 this.autoCompleteCount = autoCompleteCount;
             }
 
-            public Observable<Unit> ScenarioCompleted => completed;
-
-            public void Play(ScenarioDefinition definition)
+            public Observable<Unit> Play(ScenarioDefinition definition)
             {
-                Stop();
-                playCount++;
-                Debug.Log($"[MockScenarioPlayer] 再生: {definition.name}", host);
-                if (playCount > autoCompleteCount)
-                    return;
-                completionCoroutine = host.StartCoroutine(CompleteAfterDelay());
+                return Observable.Create<Unit>(observer =>
+                {
+                    Stop();
+                    playCount++;
+                    currentObserver = observer;
+                    Debug.Log($"[MockScenarioPlayer] 再生: {definition.name}", host);
+                    if (playCount <= autoCompleteCount)
+                    {
+                        timerSubscription = Observable.Timer(
+                                TimeSpan.FromSeconds(delaySeconds),
+                                UnityTimeProvider.Update)
+                            .Subscribe(_ => CompleteNow());
+                    }
+                    return new ExecutionLease(this, observer);
+                });
             }
 
-            public void Stop()
+            private void Stop()
             {
-                if (completionCoroutine != null)
-                    host.StopCoroutine(completionCoroutine);
-                completionCoroutine = null;
+                timerSubscription?.Dispose();
+                timerSubscription = null;
+                currentObserver = null;
             }
 
             public void CompleteNow()
             {
-                Stop();
-                completed.OnNext(Unit.Default);
+                var observer = currentObserver;
+                if (observer == null)
+                    return;
+                currentObserver = null;
+                timerSubscription?.Dispose();
+                timerSubscription = null;
+                observer.OnNext(Unit.Default);
+                observer.OnCompleted();
             }
 
             public void Dispose()
             {
                 Stop();
-                completed.Dispose();
             }
 
-            private IEnumerator CompleteAfterDelay()
+            private void Stop(Observer<Unit> observer)
             {
-                if (delaySeconds > 0f)
-                    yield return new WaitForSeconds(delaySeconds);
-                completionCoroutine = null;
-                completed.OnNext(Unit.Default);
+                if (currentObserver == observer)
+                    Stop();
+            }
+
+            private sealed class ExecutionLease : IDisposable
+            {
+                private MockScenarioPlayer owner;
+                private readonly Observer<Unit> observer;
+
+                public ExecutionLease(MockScenarioPlayer owner, Observer<Unit> observer)
+                {
+                    this.owner = owner;
+                    this.observer = observer;
+                }
+
+                public void Dispose()
+                {
+                    var target = owner;
+                    owner = null;
+                    target?.Stop(observer);
+                }
             }
         }
     }

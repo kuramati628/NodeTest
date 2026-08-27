@@ -44,8 +44,9 @@ ScenarioGraph
  └─ GraphEditorState
 
 ScenarioGraphRunner
- ├─ IScenarioPlayer ── Observable<Unit> ScenarioCompleted
- └─ IScenarioGameSceneService ── sceneGuid/scenePath → IScenarioGame
+ ├─ IScenarioPlayer.Play ── Observable<Unit>
+ ├─ IScenarioGameSceneService.LoadGame ── Observable<IScenarioGame>
+ └─ IScenarioGame.StartGame ── Observable<string>
 
 Runner.OnGameLoaded ── Observable<ScenarioGameLoadedEvent>
 ```
@@ -72,7 +73,7 @@ Runner.OnGameLoaded ── Observable<ScenarioGameLoadedEvent>
 `Assets > Create > Scenario > Game Registry` でRegistryを作成し、Inspectorの `+` からゲームを追加します。ゲームごとにSceneAssetを指定すると、Runtime用のシーンGUIDとPathが自動保存されます。対象シーンはBuild Settingsで有効にし、シーン内には `IScenarioGame` を実装するMonoBehaviourを1個だけ配置します。
 
 ```csharp
-using System;
+using R3;
 using ScenarioGraphSystem;
 using UnityEngine;
 
@@ -92,11 +93,11 @@ public sealed class SampleSentenceData : SentenceData
 
 public sealed class SampleGame : MonoBehaviour, IScenarioGame
 {
-    public void StartGame(ScriptableObject definition, Action<string> onCompleted)
+    public Observable<string> StartGame(ScriptableObject definition)
     {
         var settings = (SampleSentenceData)definition;
-        // ゲーム終了時に必ず1回だけ呼び出します。
-        onCompleted(SampleResult.Success.ToString());
+        // 実際の実装では購読解除時にゲーム処理も停止してください。
+        return Observable.Return(SampleResult.Success.ToString());
     }
 }
 ```
@@ -116,7 +117,7 @@ public sealed class ImportedDataResolver : ScenarioBranchResolver
 }
 ```
 
-標準の `UnityScenarioGameSceneService` は登録シーンをAdditiveで読み込み、ロードしたシーンのルート以下から `IScenarioGame` を検索します。ノード遷移、Reset、エラー時にはゲームシーンをアンロードします。
+標準の `UnityScenarioGameSceneService` は購読時に登録シーンをAdditiveで読み込み、ロードしたシーンのルート以下から `IScenarioGame` を検索します。購読解除、ノード遷移、Reset、エラー時にはゲームシーンをアンロードします。
 
 ## CSVシナリオ連携の例
 
@@ -127,19 +128,14 @@ using R3;
 using ScenarioGraphSystem;
 using UnityEngine;
 
-public sealed class SampleScenarioPlayer : IScenarioPlayer, System.IDisposable
+public sealed class SampleScenarioPlayer : IScenarioPlayer
 {
-    private readonly Subject<Unit> completed = new();
-    public Observable<Unit> ScenarioCompleted => completed;
-
-    public void Play(ScenarioDefinition definition)
+    public Observable<Unit> Play(ScenarioDefinition definition)
     {
-        // 既存シナリオシステムへdefinition.Csvを渡して再生します。
+        // 既存シナリオシステムの「1回の再生」をObservableへ変換して返します。
+        // Observable.Createを使う場合、返すIDisposableで既存システムを停止します。
+        return existingScenarioSystem.PlayAsObservable(definition.Csv);
     }
-
-    public void NotifyCompleted() => completed.OnNext(Unit.Default);
-    public void Stop() { /* 既存システムの再生を停止 */ }
-    public void Dispose() => completed.Dispose();
 }
 ```
 
@@ -154,7 +150,7 @@ runner.Start(graphAsset);
 // 終了時: runner.Dispose();
 ```
 
-Runnerはノード遷移、Reset、Disposeのたびに前のシナリオ購読を解除します。ゲーム実装のコールバックが誤って複数回呼ばれても、最初の1回だけを受理します。
+Runnerはノード遷移、Reset、エラー、完了、Disposeのたびに現在のシナリオ・Scene・ゲーム購読を解除します。各実装が複数回値を発行しても、最初の1回だけを受理します。同期的に値を発行するObservableでも、購読は遷移時に確実に破棄されます。
 
 ゲームSceneは`LoadSceneMode.Additive`で読み込まれるため、Runnerを配置したシナリオSceneは維持されます。次のゲームへ遷移するとき、Reset、Dispose、エラー時には現在のゲームSceneだけをアンロードします。ロードと`IScenarioGame`解決が完了すると、Runnerの`OnGameLoaded`（R3）が`StartGame`直前に1回発行されます。
 
@@ -194,4 +190,4 @@ Play Modeでは「開始 → BeforeGameシナリオ → game1 → Success/Failur
 
 ## R3
 
-同梱DLLは公式NuGet `R3` 1.3.1の `lib/netstandard2.1/R3.dll` です。ソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。時間・フレーム系のR3 Unity拡張も使う場合は、公式READMEに従って `R3.Unity` パッケージを追加してください。本機能が使うSubject、Observable、CompositeDisposableにはコアDLLだけで十分です。
+コアAPIには、公式NuGet `R3` 1.3.1の `lib/netstandard2.1/R3.dll` を同梱しています。デモの時間・フレーム処理にはUPMの `com.cysharp.r3`（R3.Unity）を使用します。R3.UnityはコアDLLを内包しないため、このプロジェクトでは両者が補完関係です。ソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。

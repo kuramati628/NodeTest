@@ -125,8 +125,6 @@ namespace ScenarioGraphSystem
             transitionVersion++;
             running = false;
             singleNodeDebug = false;
-            scenarioPlayer?.Stop();
-            gameSceneService?.UnloadCurrentGame();
             transitionSubscriptions.Dispose();
             transitionSubscriptions = new CompositeDisposable();
             graph = null;
@@ -137,8 +135,6 @@ namespace ScenarioGraphSystem
         {
             transitionVersion++;
             transitionSubscriptions.Clear();
-            scenarioPlayer?.Stop();
-            gameSceneService?.UnloadCurrentGame();
             if (node == null)
             {
                 Fail("遷移先ノードを解決できません。");
@@ -182,8 +178,28 @@ namespace ScenarioGraphSystem
             }
 
             var version = transitionVersion;
-            scenarioPlayer.ScenarioCompleted.Take(1).Subscribe(_ =>
+            Observable<Unit> play;
+            try
             {
+                play = scenarioPlayer.Play(node.ScenarioDefinition);
+            }
+            catch (Exception exception)
+            {
+                Fail($"シナリオ開始に失敗しました: {exception.Message}");
+                return;
+            }
+            if (play == null)
+            {
+                Fail("IScenarioPlayer.PlayがObservableを返しませんでした。");
+                return;
+            }
+
+            var playSubscription = new DeferredDisposable();
+            playSubscription.AddTo(transitionSubscriptions);
+            var scenarioCompleted = false;
+            playSubscription.Set(play.Take(1).Subscribe(_ =>
+            {
+                scenarioCompleted = true;
                 if (running && version == transitionVersion)
                 {
                     if (singleNodeDebug)
@@ -191,17 +207,20 @@ namespace ScenarioGraphSystem
                     else
                         AdvanceSingleOutput(node, "シナリオノードの出力が未接続です。");
                 }
-            }, exception => Fail($"シナリオ完了通知でエラーが発生しました: {exception.Message}"), _ => { })
-            .AddTo(transitionSubscriptions);
+            }, exception =>
+            {
+                if (running && version == transitionVersion)
+                    Fail($"シナリオ完了通知でエラーが発生しました: {exception.Message}");
+            }, result =>
+            {
+                if (!running || version != transitionVersion)
+                    return;
+                if (result.IsFailure)
+                    Fail($"シナリオ再生に失敗しました: {result.Exception.Message}");
+                else if (!scenarioCompleted)
+                    Fail("シナリオ再生が完了値を発行せず終了しました。");
+            }));
 
-            try
-            {
-                scenarioPlayer.Play(node.ScenarioDefinition);
-            }
-            catch (Exception exception)
-            {
-                Fail($"シナリオ開始に失敗しました: {exception.Message}");
-            }
         }
 
         private void StartGame(NodeData node)
@@ -234,11 +253,35 @@ namespace ScenarioGraphSystem
             }
 
             var version = transitionVersion;
-            gameSceneService.LoadGame(registration.Scene, game =>
+            Observable<IScenarioGame> load;
+            try
             {
-                if (!running || version != transitionVersion)
-                    return;
+                load = gameSceneService.LoadGame(registration.Scene);
+            }
+            catch (Exception exception)
+            {
+                Fail($"ゲームSceneロード開始に失敗しました: {exception.Message}");
+                return;
+            }
+            if (load == null)
+            {
+                Fail("IScenarioGameSceneService.LoadGameがObservableを返しませんでした。");
+                return;
+            }
 
+            var loaded = false;
+            var loadSubscription = new DeferredDisposable();
+            loadSubscription.AddTo(transitionSubscriptions);
+            loadSubscription.Set(load.Subscribe(game =>
+            {
+                if (loaded || !running || version != transitionVersion)
+                    return;
+                loaded = true;
+                if (game == null)
+                {
+                    Fail("ゲームSceneからIScenarioGameを解決できませんでした。");
+                    return;
+                }
                 try
                 {
                     gameLoaded.OnNext(new ScenarioGameLoadedEvent(node.GameId, registration.Scene, game));
@@ -251,26 +294,58 @@ namespace ScenarioGraphSystem
                 if (!running || version != transitionVersion)
                     return;
 
-                var completed = false;
+                Observable<string> play;
                 try
                 {
-                    game.StartGame(node.AttachedData, result =>
-                    {
-                        if (completed || !running || version != transitionVersion)
-                            return;
-                        completed = true;
-                        SubmitGameResult(result);
-                    });
+                    play = game.StartGame(node.AttachedData);
                 }
                 catch (Exception exception)
                 {
                     Fail($"ゲーム開始に失敗しました: {exception.Message}");
+                    return;
                 }
-            }, message =>
+                if (play == null)
+                {
+                    Fail("IScenarioGame.StartGameがObservableを返しませんでした。");
+                    return;
+                }
+
+                var gameSubscription = new DeferredDisposable();
+                gameSubscription.AddTo(transitionSubscriptions);
+                var gameCompleted = false;
+                gameSubscription.Set(play.Take(1).Subscribe(result =>
+                {
+                    gameCompleted = true;
+                    if (running && version == transitionVersion)
+                        SubmitGameResult(result);
+                }, exception =>
+                {
+                    if (running && version == transitionVersion)
+                        Fail($"ゲーム実行通知でエラーが発生しました: {exception.Message}");
+                }, result =>
+                {
+                    if (!running || version != transitionVersion)
+                        return;
+                    if (result.IsFailure)
+                        Fail($"ゲーム実行に失敗しました: {result.Exception.Message}");
+                    else if (!gameCompleted)
+                        Fail("ゲーム実行が分岐名を発行せず終了しました。");
+                }));
+            }, exception =>
             {
                 if (running && version == transitionVersion)
-                    Fail(message);
-            });
+                    Fail(exception.Message);
+            }, result =>
+            {
+                if (!running || version != transitionVersion)
+                    return;
+                if (result.IsFailure)
+                    Fail(result.Exception.Message);
+                else
+                    Fail(loaded
+                        ? "ゲームScene購読がゲーム実行中に終了しました。"
+                        : "ゲームSceneロードがIScenarioGameを発行せず終了しました。");
+            }));
         }
 
         private void AdvanceSingleOutput(NodeData node, string message)
@@ -288,8 +363,6 @@ namespace ScenarioGraphSystem
         {
             running = false;
             transitionVersion++;
-            scenarioPlayer?.Stop();
-            gameSceneService?.UnloadCurrentGame();
             transitionSubscriptions.Clear();
             Debug.LogError($"[ScenarioGraphRunner] {message}");
             error.OnNext(message);
@@ -300,8 +373,6 @@ namespace ScenarioGraphSystem
             running = false;
             singleNodeDebug = false;
             transitionVersion++;
-            scenarioPlayer?.Stop();
-            gameSceneService?.UnloadCurrentGame();
             transitionSubscriptions.Clear();
             completed.OnNext(Unit.Default);
         }
@@ -314,6 +385,36 @@ namespace ScenarioGraphSystem
             gameLoaded.Dispose();
             completed.Dispose();
             error.Dispose();
+        }
+
+        /// <summary>
+        /// 同期ObservableがSubscribe中にノード遷移しても、後から返る購読を確実にDisposeします。
+        /// </summary>
+        private sealed class DeferredDisposable : IDisposable
+        {
+            private IDisposable disposable;
+            private bool disposed;
+
+            public void Set(IDisposable value)
+            {
+                if (value == null)
+                    return;
+                if (disposed)
+                    value.Dispose();
+                else if (disposable == null)
+                    disposable = value;
+                else
+                    throw new InvalidOperationException("購読は一度だけ設定できます。");
+            }
+
+            public void Dispose()
+            {
+                if (disposed)
+                    return;
+                disposed = true;
+                disposable?.Dispose();
+                disposable = null;
+            }
         }
     }
 }

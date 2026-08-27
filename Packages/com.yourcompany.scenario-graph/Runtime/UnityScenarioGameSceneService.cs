@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using R3;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -15,38 +16,63 @@ namespace ScenarioGraphSystem
         private Scene currentScene;
         private int operationVersion;
 
-        /// <summary>現在のゲームシーンを破棄してから、指定シーンを加算ロードします。</summary>
-        public void LoadGame(SceneReference sceneReference, Action<IScenarioGame> onLoaded, Action<string> onError)
+        /// <summary>購読中だけ指定シーンをロードし、解決したゲーム実装を1回発行します。</summary>
+        public Observable<IScenarioGame> LoadGame(SceneReference sceneReference)
         {
-            if (sceneReference == null || !sceneReference.IsAssigned)
+            return Observable.Create<IScenarioGame>(observer =>
             {
-                onError?.Invoke("ゲームシーンが未設定です。");
-                return;
-            }
+                var version = ++operationVersion;
+                if (sceneReference == null || !sceneReference.IsAssigned)
+                {
+                    NotifyError(observer, "ゲームシーンが未設定です。");
+                    return new SceneLease(this, version);
+                }
 
-            if (SceneUtility.GetBuildIndexByScenePath(sceneReference.ScenePath) < 0)
-            {
-                onError?.Invoke($"ゲームシーン『{sceneReference.ScenePath}』がBuild Settingsに登録されていません。");
-                return;
-            }
+                if (SceneUtility.GetBuildIndexByScenePath(sceneReference.ScenePath) < 0)
+                {
+                    NotifyError(observer, $"ゲームシーン『{sceneReference.ScenePath}』がBuild Settingsに登録されていません。");
+                    return new SceneLease(this, version);
+                }
 
-            var version = ++operationVersion;
-            UnloadLoadedScene(() =>
-            {
-                if (version != operationVersion)
-                    return;
-                BeginLoad(sceneReference.ScenePath, version, onLoaded, onError);
+                BeginTransitionLoad(sceneReference.ScenePath, version, observer);
+                return new SceneLease(this, version);
             });
         }
 
-        /// <summary>ロード中処理を無効化し、現在のゲームシーンをアンロードします。</summary>
-        public void UnloadCurrentGame()
+        private void Cancel(int version)
         {
+            if (version != operationVersion)
+                return;
             operationVersion++;
-            UnloadLoadedScene(null);
+            UnloadLoadedScene();
         }
 
-        private void BeginLoad(string scenePath, int version, Action<IScenarioGame> onLoaded, Action<string> onError)
+        private void BeginTransitionLoad(string scenePath, int version, Observer<IScenarioGame> observer)
+        {
+            if (!currentScene.IsValid() || !currentScene.isLoaded)
+            {
+                currentScene = default;
+                BeginLoad(scenePath, version, observer);
+                return;
+            }
+
+            var scene = currentScene;
+            currentScene = default;
+            var operation = SceneManager.UnloadSceneAsync(scene);
+            if (operation == null)
+            {
+                BeginLoad(scenePath, version, observer);
+                return;
+            }
+
+            operation.completed += _ =>
+            {
+                if (version == operationVersion)
+                    BeginLoad(scenePath, version, observer);
+            };
+        }
+
+        private void BeginLoad(string scenePath, int version, Observer<IScenarioGame> observer)
         {
             AsyncOperation operation;
             try
@@ -55,26 +81,26 @@ namespace ScenarioGraphSystem
             }
             catch (Exception exception)
             {
-                onError?.Invoke($"ゲームシーンの読み込み開始に失敗しました: {exception.Message}");
+                NotifyError(observer, $"ゲームシーンの読み込み開始に失敗しました: {exception.Message}");
                 return;
             }
 
             if (operation == null)
             {
-                onError?.Invoke($"ゲームシーン『{scenePath}』を読み込めませんでした。");
+                NotifyError(observer, $"ゲームシーン『{scenePath}』を読み込めませんでした。");
                 return;
             }
 
-            operation.completed += _ => CompleteLoad(scenePath, version, onLoaded, onError);
+            operation.completed += _ => CompleteLoad(scenePath, version, observer);
         }
 
-        private void CompleteLoad(string scenePath, int version, Action<IScenarioGame> onLoaded, Action<string> onError)
+        private void CompleteLoad(string scenePath, int version, Observer<IScenarioGame> observer)
         {
             var loadedScene = SceneManager.GetSceneByPath(scenePath);
             if (!loadedScene.IsValid() || !loadedScene.isLoaded)
             {
                 if (version == operationVersion)
-                    onError?.Invoke($"ゲームシーン『{scenePath}』の読み込みに失敗しました。");
+                    NotifyError(observer, $"ゲームシーン『{scenePath}』の読み込みに失敗しました。");
                 return;
             }
 
@@ -88,14 +114,19 @@ namespace ScenarioGraphSystem
             var games = FindGames(loadedScene);
             if (games.Count != 1)
             {
-                onError?.Invoke(games.Count == 0
+                NotifyError(observer, games.Count == 0
                     ? $"ゲームシーン『{scenePath}』にIScenarioGame実装がありません。"
                     : $"ゲームシーン『{scenePath}』にIScenarioGame実装が複数あります。");
-                UnloadCurrentGame();
+                Cancel(version);
                 return;
             }
 
-            onLoaded?.Invoke(games[0]);
+            observer.OnNext(games[0]);
+        }
+
+        private static void NotifyError(Observer<IScenarioGame> observer, string message)
+        {
+            observer.OnCompleted(Result.Failure(new InvalidOperationException(message)));
         }
 
         private static List<IScenarioGame> FindGames(Scene scene)
@@ -106,22 +137,36 @@ namespace ScenarioGraphSystem
                 .ToList();
         }
 
-        private void UnloadLoadedScene(Action onCompleted)
+        private void UnloadLoadedScene()
         {
             if (!currentScene.IsValid() || !currentScene.isLoaded)
             {
                 currentScene = default;
-                onCompleted?.Invoke();
                 return;
             }
 
             var scene = currentScene;
             currentScene = default;
-            var operation = SceneManager.UnloadSceneAsync(scene);
-            if (operation == null)
-                onCompleted?.Invoke();
-            else
-                operation.completed += _ => onCompleted?.Invoke();
+            SceneManager.UnloadSceneAsync(scene);
+        }
+
+        private sealed class SceneLease : IDisposable
+        {
+            private UnityScenarioGameSceneService owner;
+            private readonly int version;
+
+            public SceneLease(UnityScenarioGameSceneService owner, int version)
+            {
+                this.owner = owner;
+                this.version = version;
+            }
+
+            public void Dispose()
+            {
+                var target = owner;
+                owner = null;
+                target?.Cancel(version);
+            }
         }
     }
 }
