@@ -8,5 +8,15 @@
     "scenario",
     "graph",
     "graphview"
+  ],
+  "dependencies": {
+    "com.cysharp.r3": "1.3.1"
+  },
+  "samples": [
+    {
+      "displayName": "Scenario Graph Demo",
+      "description": "R3.Unityを使用したシナリオ・ゲーム進行の接続デモです。",
+      "path": "Samples~/ScenarioGraphDemo"
+    }
   ]
 }

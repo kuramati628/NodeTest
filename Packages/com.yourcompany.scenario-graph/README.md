@@ -21,7 +21,7 @@ Packages/com.yourcompany.scenario-graph/
 │  ├─ ScenarioNodeView.cs           ノード/コメント表示
 │  ├─ ScenarioEdge.cs               自己接続/戻り接続の描画
 │  └─ ScenarioGraphInspectors.cs    SerializedPropertyベースInspector
-└─ Plugins/R3/R3.dll                R3 1.3.1 (netstandard2.1)
+└─ Samples~/ScenarioGraphDemo/      Package ManagerからImportできる接続デモ
 
 Packages/com.yourcompany.scenario-spreadsheet/Editor/
 ├─ ScenarioSpreadsheet.Editor.asmdef Editor専用アセンブリ
@@ -182,12 +182,25 @@ CSVはImport Profileで指定した同一パスへ上書きされます。この
 
 プロジェクトには全体接続確認用のモックを同梱しています。
 
-- `Assets/Demo/ScenarioGraph/MockGameData.asset` はゲームノードに設定済みです。Inspectorの`Branches`リストへ任意の分岐名を入力でき、`Completion Result`にはそのリストの値が選択肢として表示されます。
-- `Assets/Demo/ScenarioGraph/Scenes/game1.unity` と `game2.unity` には `MockScenarioGame` が配置済みです。どちらもBuild Settingsへ登録済みです。
-- `Assets/Demo/ScenarioGraph/Scenes/SampleScene.unity` の `Scenario Graph Mock Runner` は、Play Mode開始時に `ScenarioGraph.asset` を実行します。
+- Package Managerで`Scenario Graph Demo`をImportしてください。
+- Import先の`MockGameData.asset`はゲームノードに設定済みです。Inspectorの`Branches`リストへ任意の分岐名を入力でき、`Completion Result`にはそのリストの値が選択肢として表示されます。
+- Import先の`Scenes/game1.unity`と`game2.unity`には`MockScenarioGame`が配置済みです。利用プロジェクトのBuild Settingsへ追加してください。
+- Import先の`Scenes/SampleScene.unity`の`Scenario Graph Mock Runner`は、Play Mode開始時に`ScenarioGraph.asset`を実行します。
 
 Play Modeでは「開始 → BeforeGameシナリオ → game1 → Success/Failureシナリオ」までConsoleへ出力されます。初期設定は分岐先シナリオで停止し、`Scenario Graph Mock Runner`のコンテキストメニュー「現在のシナリオを完了」を実行すると終了ノードまで確認できます。
 
 ## R3
 
-コアAPIには、公式NuGet `R3` 1.3.1の `lib/netstandard2.1/R3.dll` を同梱しています。デモの時間・フレーム処理にはUPMの `com.cysharp.r3`（R3.Unity）を使用します。R3.UnityはコアDLLを内包しないため、このプロジェクトでは両者が補完関係です。ソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。
+このパッケージはR3 DLLを同梱しません。導入前に次の順番で依存関係を準備してください。
+
+1. NuGetForUnityなどを使用して、NuGet `R3` 1.3.1をインストールします。推移依存も復元してください。
+2. Unity Package Managerで`com.cysharp.r3`（R3.Unity）1.3.1をインストールします。
+3. Unity Package Managerで`com.yourcompany.scenario-graph`をインストールします。
+
+Git URLからR3.Unityを導入する場合は、利用プロジェクトの`Packages/manifest.json`へ次を追加します。
+
+```json
+"com.cysharp.r3": "https://github.com/Cysharp/R3.git?path=src/R3.Unity/Assets/R3.Unity#1.3.1"
+```
+
+R3コアはNuGet依存のため、Scenario Graphの`package.json`から自動導入できません。R3コアとR3.Unityは同じ1.3.1へ揃えてください。R3が見つからない場合は`R3`、`Observable`、`Unit`などの型解決エラーになります。ソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。

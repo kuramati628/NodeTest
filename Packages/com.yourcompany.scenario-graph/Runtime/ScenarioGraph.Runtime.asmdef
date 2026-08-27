@@ -1,9 +1,7 @@
 {
   "name": "ScenarioGraph.Runtime",
   "rootNamespace": "ScenarioGraphSystem",
-  "references": [
-    "R3"
-  ],
+  "references": [],
   "autoReferenced": true,
   "overrideReferences": false,
   "noEngineReferences": false

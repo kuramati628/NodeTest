@@ -2,8 +2,7 @@
   "name": "ScenarioGraph.Runtime.Tests",
   "rootNamespace": "ScenarioGraphSystem.Tests",
   "references": [
-    "ScenarioGraph.Runtime",
-    "R3"
+    "ScenarioGraph.Runtime"
   ],
   "includePlatforms": [
     "Editor"
@@ -12,6 +11,13 @@
     "TestAssemblies"
   ],
   "autoReferenced": false,
-  "overrideReferences": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "R3.dll",
+    "Microsoft.Bcl.AsyncInterfaces.dll",
+    "Microsoft.Bcl.TimeProvider.dll",
+    "System.ComponentModel.Annotations.dll",
+    "System.Threading.Channels.dll"
+  ],
   "noEngineReferences": false
 }

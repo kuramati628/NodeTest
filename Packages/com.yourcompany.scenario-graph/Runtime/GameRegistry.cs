@@ -23,10 +23,12 @@ namespace ScenarioGraphSystem
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
             var type = GetType();
             var attributed = type.GetFields(flags)
-                .Where(field => field.FieldType.IsEnum && field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                .Where(field => IsUserDataMember(field) && field.FieldType.IsEnum &&
+                    field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
                 .Select(field => field.FieldType)
                 .Concat(type.GetProperties(flags)
-                    .Where(property => property.PropertyType.IsEnum && property.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                    .Where(property => IsUserDataMember(property) && property.PropertyType.IsEnum &&
+                        property.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
                     .Select(property => property.PropertyType))
                 .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
                     .Where(nested => nested.IsEnum && nested.GetCustomAttribute<SentenceBranchEnumAttribute>() != null))
@@ -38,16 +40,19 @@ namespace ScenarioGraphSystem
                 return null;
 
             var candidates = type.GetFields(flags)
-                .Where(field => field.FieldType.IsEnum)
+                .Where(field => IsUserDataMember(field) && field.FieldType.IsEnum)
                 .Select(field => field.FieldType)
                 .Concat(type.GetProperties(flags)
-                    .Where(property => property.PropertyType.IsEnum)
+                    .Where(property => IsUserDataMember(property) && property.PropertyType.IsEnum)
                     .Select(property => property.PropertyType))
                 .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum))
                 .Distinct()
                 .ToList();
             return candidates.Count == 1 ? candidates[0] : null;
         }
+
+        private static bool IsUserDataMember(MemberInfo member)
+            => member.DeclaringType != null && typeof(SentenceData).IsAssignableFrom(member.DeclaringType);
 
         public virtual IReadOnlyList<string> GetBranchNames()
         {
@@ -116,9 +121,10 @@ namespace ScenarioGraphSystem
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
             var type = data.GetType();
             var attributedEnumTypes = type.GetFields(flags)
-                .Where(field => field.FieldType.IsEnum && field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
+                .Where(field => IsUserDataMember(field) && field.FieldType.IsEnum &&
+                    field.GetCustomAttribute<SentenceBranchEnumAttribute>() != null)
                 .Select(field => field.FieldType)
-                .Concat(type.GetProperties(flags).Where(property => property.PropertyType.IsEnum &&
+                .Concat(type.GetProperties(flags).Where(property => IsUserDataMember(property) && property.PropertyType.IsEnum &&
                     property.GetCustomAttribute<SentenceBranchEnumAttribute>() != null).Select(property => property.PropertyType))
                 .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum &&
                     nested.GetCustomAttribute<SentenceBranchEnumAttribute>() != null))
@@ -136,8 +142,10 @@ namespace ScenarioGraphSystem
                 return false;
             }
 
-            var enumTypes = type.GetFields(flags).Where(field => field.FieldType.IsEnum).Select(field => field.FieldType)
-                .Concat(type.GetProperties(flags).Where(property => property.PropertyType.IsEnum).Select(property => property.PropertyType))
+            var enumTypes = type.GetFields(flags).Where(field => IsUserDataMember(field) && field.FieldType.IsEnum)
+                .Select(field => field.FieldType)
+                .Concat(type.GetProperties(flags).Where(property => IsUserDataMember(property) && property.PropertyType.IsEnum)
+                    .Select(property => property.PropertyType))
                 .Concat(type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Where(nested => nested.IsEnum))
                 .Distinct().ToList();
             if (enumTypes.Count == 1)
@@ -153,6 +161,9 @@ namespace ScenarioGraphSystem
                 : $"データ『{data.name}』に複数のenumがあります。Resolverを設定してください。";
             return false;
         }
+
+        private static bool IsUserDataMember(MemberInfo member)
+            => member.DeclaringType != null && typeof(ScriptableObject).IsAssignableFrom(member.DeclaringType);
 
         private static IReadOnlyList<string> Normalize(IReadOnlyList<string> source)
         {
