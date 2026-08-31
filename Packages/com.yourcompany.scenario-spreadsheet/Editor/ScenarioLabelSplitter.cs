@@ -39,10 +39,12 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
         private const string LabelCommand = "Label";
         private const string JumpCommand = "jump";
         private const string GoToGameCommand = "GoToGame";
+        private const int CommandColumnIndex = 1;
+        private const int ValueColumnIndex = 2;
 
         public static bool HasDefinition(GoogleSheetData sheetData)
             => (sheetData?.values ?? Array.Empty<string[]>()).Any(row =>
-                string.Equals(GetCell(row, 0), DefineLabelCommand, StringComparison.Ordinal));
+                string.Equals(GetCell(row, CommandColumnIndex), DefineLabelCommand, StringComparison.Ordinal));
 
         /// <summary>DefineLabelごとに、直前シナリオとLabel区間を1つの分岐ブロックへ変換します。</summary>
         public static IReadOnlyList<ScenarioLabelBlock> SplitBlocks(GoogleSheetData sheetData)
@@ -63,7 +65,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 var row = rows[rowIndex] ?? Array.Empty<string>();
                 if (!IsMeaningfulRow(row))
                     continue;
-                var command = GetCell(row, 0);
+                var command = GetCell(row, CommandColumnIndex);
 
                 if (string.Equals(command, DefineLabelCommand, StringComparison.Ordinal))
                 {
@@ -179,7 +181,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 if (!IsMeaningfulRow(row))
                     continue;
 
-                var command = GetCell(row, 0);
+                var command = GetCell(row, CommandColumnIndex);
                 if (string.Equals(command, DefineLabelCommand, StringComparison.Ordinal))
                     throw new InvalidOperationException($"DefineLabelが複数あります（{FormatRow(rowIndex)}）。");
 
@@ -229,7 +231,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 return Array.Empty<string[]>();
 
             var goToGameIndexes = pendingRows.Select((row, index) => (row, index))
-                .Where(item => string.Equals(GetCell(item.row, 0), GoToGameCommand, StringComparison.Ordinal))
+                .Where(item => string.Equals(GetCell(item.row, CommandColumnIndex), GoToGameCommand, StringComparison.Ordinal))
                 .Select(item => item.index)
                 .ToArray();
             if (goToGameIndexes.Length != 1 || goToGameIndexes[0] != pendingRows.Count - 1)
@@ -258,7 +260,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             var result = -1;
             for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
-                if (!string.Equals(GetCell(rows[rowIndex], 0), DefineLabelCommand, StringComparison.Ordinal))
+                if (!string.Equals(GetCell(rows[rowIndex], CommandColumnIndex), DefineLabelCommand, StringComparison.Ordinal))
                     continue;
                 if (result >= 0)
                     throw new InvalidOperationException($"DefineLabelが複数あります（{FormatRow(rowIndex)}）。");
@@ -269,7 +271,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
 
         private static IReadOnlyList<string> ReadDeclaredLabels(string[] row, int rowIndex)
         {
-            var labels = (row ?? Array.Empty<string>()).Skip(1)
+            var labels = (row ?? Array.Empty<string>()).Skip(ValueColumnIndex)
                 .Select(value => value?.Trim() ?? string.Empty)
                 .Where(value => !string.IsNullOrEmpty(value))
                 .ToArray();
@@ -285,7 +287,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
 
         private static string RequireSingleValue(string[] row, int rowIndex, string command)
         {
-            var value = GetCell(row, 1);
+            var value = GetCell(row, ValueColumnIndex);
             if (string.IsNullOrEmpty(value))
                 throw new InvalidOperationException($"{command}に対象名がありません（{FormatRow(rowIndex)}）。");
             return value;

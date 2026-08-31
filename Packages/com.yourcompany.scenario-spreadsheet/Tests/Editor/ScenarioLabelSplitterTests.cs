@@ -7,44 +7,54 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
     public sealed class ScenarioLabelSplitterTests
     {
         [Test]
-        public void HasDefinition_ReturnsFalseForLegacyCsv()
+        public void HasDefinition_ReturnsFalseForCsvWithoutDefineLabel()
         {
-            var source = Sheet(Row("Text", "Player", "従来形式"), Row("End"));
+            var source = Sheet(Row("{Player:Idle}", "Text", "Player", "hello"), Row("", "End"));
 
             Assert.That(ScenarioLabelSplitter.HasDefinition(source), Is.False);
         }
 
         [Test]
-        public void SplitBlocks_CreatesNumberedBlocksAndRemovesGoToGame()
+        public void HasDefinition_FindsDefineLabelInSecondColumn()
+        {
+            var source = Sheet(Row("", "DefineLabel", "", "Success"));
+
+            Assert.That(ScenarioLabelSplitter.HasDefinition(source), Is.True);
+        }
+
+        [Test]
+        public void SplitBlocks_CreatesNumberedBlocksAndPreservesFirstColumn()
         {
             var source = Sheet(
-                Row("Text", "Doctor", "before 1"),
-                Row("GoToGame"),
-                Row("DefineLabel", "Success"),
-                Row("Label", "Success"),
-                Row("Text", "Doctor", "before 2 belongs to previous label"),
-                Row("GoToGame"),
-                Row("DefineLabel", "HugeSuccess"),
-                Row("Label", "HugeSuccess"),
-                Row("End"),
-                Row("ShakingScreen"));
+                Row("{Android:None}", "Text", "Doctor", "before 1"),
+                Row("", "GoToGame"),
+                Row("", "DefineLabel", "", "Success"),
+                Row("", "Label", "Success"),
+                Row("{Android:Upset}", "Text", "Doctor", "before 2 belongs to previous label"),
+                Row("", "GoToGame"),
+                Row("", "DefineLabel", "", "HugeSuccess"),
+                Row("", "Label", "HugeSuccess"),
+                Row("", "End"),
+                Row("", "ShakingScreen"));
 
             var blocks = ScenarioLabelSplitter.SplitBlocks(source);
 
             Assert.That(blocks.Count, Is.EqualTo(2));
             Assert.That(blocks[0].BlockNumber, Is.EqualTo(1));
             Assert.That(blocks[1].BlockNumber, Is.EqualTo(2));
-            CollectionAssert.AreEqual(new[] { "Text" }, blocks[0].PrefixRows.Select(row => row[0]));
+            CollectionAssert.AreEqual(new[] { "Text" }, blocks[0].PrefixRows.Select(row => row[1]));
+            Assert.That(blocks[0].PrefixRows[0][0], Is.EqualTo("{Android:None}"));
             Assert.That(blocks[1].PrefixRows, Is.Empty);
             Assert.That(blocks.SelectMany(block => block.PrefixRows)
-                .Any(row => row[0] == "GoToGame"), Is.False);
+                .Any(row => row[1] == "GoToGame"), Is.False);
             CollectionAssert.AreEqual(
                 new[] { "Text" },
-                blocks[0].Sections[0].Rows.Select(row => row[0]));
+                blocks[0].Sections[0].Rows.Select(row => row[1]));
+            Assert.That(blocks[0].Sections[0].Rows[0][0], Is.EqualTo("{Android:Upset}"));
             Assert.That(blocks[0].Sections[0].EndsWithGoToGame, Is.True);
             CollectionAssert.AreEqual(
                 new[] { "End", "ShakingScreen" },
-                blocks[1].Sections[0].Rows.Select(row => row[0]));
+                blocks[1].Sections[0].Rows.Select(row => row[1]));
             Assert.That(blocks[1].Sections[0].EndsWithGoToGame, Is.False);
         }
 
@@ -52,13 +62,13 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
         public void SplitBlocks_RejectsNextDefinitionWithoutPreviousGoToGame()
         {
             var source = Sheet(
-                Row("GoToGame"),
-                Row("DefineLabel", "Success"),
-                Row("Label", "Success"),
-                Row("Text", "Doctor", "not transitioned"),
-                Row("DefineLabel", "Next"),
-                Row("Label", "Next"),
-                Row("End"));
+                Row("", "GoToGame"),
+                Row("", "DefineLabel", "", "Success"),
+                Row("", "Label", "Success"),
+                Row("", "Text", "Doctor", "not transitioned"),
+                Row("", "DefineLabel", "", "Next"),
+                Row("", "Label", "Next"),
+                Row("", "End"));
 
             var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.SplitBlocks(source));
             StringAssert.Contains("GoToGame", exception.Message);
@@ -68,10 +78,10 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
         public void SplitBlocks_RejectsPrefixWithoutGoToGame()
         {
             var source = Sheet(
-                Row("Text", "Doctor", "before"),
-                Row("DefineLabel", "Success"),
-                Row("Label", "Success"),
-                Row("End"));
+                Row("", "Text", "Doctor", "before"),
+                Row("", "DefineLabel", "", "Success"),
+                Row("", "Label", "Success"),
+                Row("", "End"));
 
             var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.SplitBlocks(source));
             StringAssert.Contains("GoToGame", exception.Message);
@@ -81,18 +91,18 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
         public void Split_RemovesControlRowsAndPreservesDeclaredOrder()
         {
             var source = Sheet(
-                Row("DefineLabel", "Success", "HugeSuccess", "Label_End"),
-                Row("Label", "Success"),
-                Row("TextGameResult", "TextCharaA"),
-                Row("Text", "Doctor", "今回は許してやる"),
-                Row("jump", "Label_End"),
-                Row("Label", "HugeSuccess"),
-                Row("TextGameResult", "TextCharaA"),
-                Row("Text", "Player", "誠意はあるようだな"),
-                Row("jump", "Label_End"),
-                Row("Label", "Label_End"),
-                Row("ShowBlackBelt", "FALSE"),
-                Row("End"));
+                Row("", "DefineLabel", "", "Success", "HugeSuccess", "Label_End"),
+                Row("", "Label", "Success"),
+                Row("", "TextGameResult", "TextCharaA"),
+                Row("{Doctor:Smile}", "Text", "Doctor", "allowed this time"),
+                Row("", "jump", "Label_End"),
+                Row("", "Label", "HugeSuccess"),
+                Row("", "TextGameResult", "TextCharaA"),
+                Row("{Player:Idle}", "Text", "Player", "you seem sincere"),
+                Row("", "jump", "Label_End"),
+                Row("", "Label", "Label_End"),
+                Row("", "ShowBlackBelt", "FALSE"),
+                Row("", "End"));
 
             var sections = ScenarioLabelSplitter.Split(source);
 
@@ -104,45 +114,49 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
             Assert.That(sections[2].JumpTarget, Is.Empty);
             CollectionAssert.AreEqual(
                 new[] { "TextGameResult", "Text" },
-                sections[0].Rows.Select(row => row[0]));
+                sections[0].Rows.Select(row => row[1]));
+            Assert.That(sections[0].Rows[1][0], Is.EqualTo("{Doctor:Smile}"));
+            StringAssert.Contains(
+                "{Doctor:Smile},Text,Doctor,allowed this time",
+                ScenarioCsvSerializer.Serialize(sections[0].Rows.ToArray()));
             CollectionAssert.AreEqual(
                 new[] { "ShowBlackBelt", "End" },
-                sections[2].Rows.Select(row => row[0]));
+                sections[2].Rows.Select(row => row[1]));
         }
 
         [Test]
         public void Split_RejectsUndefinedJumpTarget()
         {
             var source = Sheet(
-                Row("DefineLabel", "Success"),
-                Row("Label", "Success"),
-                Row("Text", "Player", "text"),
-                Row("jump", "Missing"));
+                Row("", "DefineLabel", "", "Success"),
+                Row("", "Label", "Success"),
+                Row("", "Text", "Player", "text"),
+                Row("", "jump", "Missing"));
 
             var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.Split(source));
-            StringAssert.Contains("DefineLabelで宣言されていません", exception.Message);
+            StringAssert.Contains("DefineLabel", exception.Message);
         }
 
         [Test]
         public void Split_RejectsExecutableRowAfterJump()
         {
             var source = Sheet(
-                Row("DefineLabel", "Success"),
-                Row("Label", "Success"),
-                Row("jump", "Success"),
-                Row("Text", "Player", "到達しない行"));
+                Row("", "DefineLabel", "", "Success"),
+                Row("", "Label", "Success"),
+                Row("", "jump", "Success"),
+                Row("", "Text", "Player", "unreachable"));
 
             var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.Split(source));
-            StringAssert.Contains("jumpの後", exception.Message);
+            StringAssert.Contains("jump", exception.Message);
         }
 
         [Test]
         public void Split_RejectsMissingDeclaredLabel()
         {
             var source = Sheet(
-                Row("DefineLabel", "Success", "Label_End"),
-                Row("Label", "Success"),
-                Row("End"));
+                Row("", "DefineLabel", "", "Success", "Label_End"),
+                Row("", "Label", "Success"),
+                Row("", "End"));
 
             var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.Split(source));
             StringAssert.Contains("Label_End", exception.Message);
