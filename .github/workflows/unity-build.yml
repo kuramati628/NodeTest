@@ -1,0 +1,57 @@
+name: Unity Build
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - BuildBranch # TARGET_BRANCHに変更
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build StandaloneWindows64
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library # PROJECT_PATHがサブフォルダなら変更
+          key: Library-${{ runner.os }}-StandaloneWindows64-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ runner.os }}-StandaloneWindows64-
+            Library-${{ runner.os }}-
+
+      - name: Build Unity project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: .
+          targetPlatform: StandaloneWindows64
+
+      - name: Upload build
+        id: upload-build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity-StandaloneWindows64-${{ github.sha }}
+          path: build
+          if-no-files-found: error
+          retention-days: 7
