@@ -1,8 +1,38 @@
 # Scenario Graph Editor
 
-Unity 6000.4.6向けの、シナリオCSVとゲーム進行を同一グラフで編集・実行するEditor拡張です。
+Unity 6000.4.6向けの、シナリオCSVとゲーム進行を同一グラフで編集するEditor拡張とRuntime状態機械です。
 
-## ファイル構成と責務
+## 責務
+
+Scenario Graphパッケージは次の処理だけを担当します。
+
+- グラフ構造の検証
+- Startノードの解決
+- 現在ノードの保持
+- 次に実行するScenario/Gameノードの通知
+- Scenarioノード正常完了時の単一出力Edge解決
+- ゲーム結果名に対応する出力PortとEdgeの解決
+- Endノード到達時の完了通知
+
+次の処理は利用プロジェクト側のCoordinatorやScene EntryPointで実装してください。
+
+- Unity Sceneのロード、アンロード
+- Navigathenaなどの画面遷移API呼び出し
+- シナリオ再生
+- ゲームコンポーネントの検索と実行
+- ゲームへの入力データ送信と結果購読
+- Result Sceneへの遷移
+
+```text
+ScenarioGraphRunner
+  ├─ OnNodeChanged(NodeData) ── 利用側がScenario/Gameを実行
+  ├─ CompleteScenarioNode() ─── Scenario正常完了を返す
+  ├─ SubmitGameResult(name) ─── Game結果名を返す
+  ├─ OnCompleted ────────────── End到達通知
+  └─ OnError ───────────────── 検証・分岐エラー
+```
+
+## ファイル構成
 
 ```text
 Packages/com.yourcompany.scenario-graph/
@@ -11,196 +41,108 @@ Packages/com.yourcompany.scenario-graph/
 │  ├─ ScenarioGraph.cs              グラフ全体を保持する単一アセット
 │  ├─ GameRegistry.cs               ゲームID、表示名、シーンGUID/Path
 │  ├─ ScenarioDefinition.cs         CSV参照を保持するシナリオ設定アセット
-│  ├─ ScenarioExecutionContracts.cs シナリオ再生・ゲームシーン解決の契約
-│  ├─ UnityScenarioGameSceneService.cs ゲームシーンの加算ロードと実装解決
+│  ├─ ScenarioExecutionContracts.cs プロジェクト側デバッグホストの契約
 │  ├─ ScenarioGraphValidator.cs     Editor/Runtime共通検証
-│  └─ ScenarioGraphRunner.cs        アセットを変更しない実行状態機械
-├─ Editor/
-│  ├─ ScenarioGraphEditorWindow.cs  ツールバー、検索、検証一覧、保存
-│  ├─ ScenarioGraphView.cs          GraphView操作とデータ同期
-│  ├─ ScenarioNodeView.cs           ノード/コメント表示
-│  ├─ ScenarioEdge.cs               自己接続/戻り接続の描画
-│  └─ ScenarioGraphInspectors.cs    SerializedPropertyベースInspector
-└─ Samples~/ScenarioGraphDemo/      Package ManagerからImportできる接続デモ
-
-Packages/com.yourcompany.scenario-spreadsheet/Editor/
-├─ ScenarioSpreadsheet.Editor.asmdef Editor専用アセンブリ
-├─ GoogleSheetsCredential.cs        APIキー解決（環境変数優先）
-├─ ScenarioSpreadsheetImportProfile.cs SpreadsheetとScenarioDefinitionの対応設定
-├─ GoogleSheetsClient.cs            Google Sheets Values API通信
-├─ ScenarioCsvSerializer.cs         CSV引用符処理と列数補完
-├─ ScenarioDefinitionCsvImporter.cs 固定CSV更新とDefinitionへの割り当て
-└─ ScenarioSpreadsheetImportProfileInspector.cs 取得ボタンと設定検証
+│  └─ ScenarioGraphRunner.cs        外部から進行させる実行状態機械
+├─ Editor/                          GraphView Editor
+├─ Tests/Editor/                    RunnerのEdit Modeテスト
+└─ Samples~/ScenarioGraphDemo/      外部ホスト方式の接続デモ
 ```
 
-```text
-ScenarioGraph
- ├─ List<NodeData>
- │   ├─ ScenarioDefinition → TextAsset (Scenario)
- │   └─ GameRegistry + gameId + ScriptableObject + Branch Resolver + OutputPortData[] (Game)
- ├─ List<EdgeData> ── outputNodeGuid/outputPortGuid → inputNodeGuid
- ├─ List<GroupData>
- ├─ List<CommentData>
- └─ GraphEditorState
-
-ScenarioGraphRunner
- ├─ IScenarioPlayer.Play ── Observable<Unit>
- ├─ IScenarioGameSceneService.LoadGame ── Observable<IScenarioGame>
- └─ IScenarioGame.StartGame ── Observable<string>
-
-Runner.OnGameLoaded ── Observable<ScenarioGameLoadedEvent>
-```
-
-ノードとポートのGUIDは作成時だけ発行されます。コピー＆ペースト時はノードGUID、ポートGUID、内部Edge GUIDをすべて再発行します。リストはユーザー操作順を維持し、自動ソートしません。
+ノードとポートのGUIDは作成時だけ発行されます。既存の`NodeData`、`GameRegistry`、`SceneReference`、出力Port、Edgeのシリアライズ構造は維持されます。
 
 ## 作成と編集
 
 1. `Assets > Create > Scenario > Scenario Graph` でグラフを作成します。
 2. アセットをダブルクリックして専用Windowを開きます。
-3. ツールバーの「開始」と「終了」で、それぞれのノードを1個ずつ作ります。
-4. 「シナリオ」「ゲーム」を追加し、右側出力から左側入力へ接続します。
-5. `Scenario Definition` を作成してCSVを設定し、シナリオノードから参照します。
-6. ゲームノードではGameRegistry、ゲーム、既存のScriptableObjectアセットを選びます。出力ポートはアタッチデータから解決した分岐で自動生成されます。
-7. 「検証」で下部のエラー一覧を確認し、「保存」でアセットを保存します。
+3. 「開始」と「終了」を1個ずつ作ります。
+4. 「シナリオ」「ゲーム」を追加してEdgeで接続します。
+5. Scenarioノードへ`ScenarioDefinition`を設定します。
+6. Gameノードへ`GameRegistry`、ゲームID、Attached Dataを設定します。
+7. 「検証」でエラーを確認し、「保存」でアセットを保存します。
 
-アタッチ先が`SentenceData`なら従来どおり分岐を取得します。既存ScriptableObjectがenumを1種類だけ持つ場合も自動検出され、enumメンバー名が出力ポート名になります。
-複数enumなどで自動解決できない型は、ノードの`Branch Resolver`へ専用Resolverアセットを設定してください。
+Attached Dataが`SentenceData`ならenumから分岐名を取得します。既存ScriptableObjectにenumが1種類だけある場合も自動検出します。複数enumなどで自動解決できない場合は`ScenarioBranchResolver`を設定してください。
 
-右クリックからもノード、グループ、コメントを作成できます。`Ctrl/Cmd+C` と `Ctrl/Cmd+V`、Delete、ズーム、パンはGraphView標準操作です。検索欄はノード名、CSV名、ゲーム名、コメント本文、グループ名を対象にします。グループを削除しても内部ノードは削除されません。
+## Runnerの使用例
 
-## GameRegistryとゲーム実装の例
-
-`Assets > Create > Scenario > Game Registry` でRegistryを作成し、Inspectorの `+` からゲームを追加します。ゲームごとにSceneAssetを指定すると、Runtime用のシーンGUIDとPathが自動保存されます。対象シーンはBuild Settingsで有効にし、シーン内には `IScenarioGame` を実装するMonoBehaviourを1個だけ配置します。
+Runnerはコンストラクタ引数を必要としません。`OnNodeChanged`で受け取ったノードを利用側で実行し、完了結果だけをRunnerへ返します。
 
 ```csharp
 using R3;
 using ScenarioGraphSystem;
-using UnityEngine;
 
-public enum SampleResult
-{
-    Success,
-    Failure
-}
+var runner = new ScenarioGraphRunner();
 
-[CreateAssetMenu(menuName = "Scenario/Sample Game Data")]
-public sealed class SampleSentenceData : SentenceData
+runner.OnNodeChanged.Subscribe(node =>
 {
-    [SentenceBranchEnum]
-    public SampleResult result;
-    public int targetScore = 10;
-}
-
-public sealed class SampleGame : MonoBehaviour, IScenarioGame
-{
-    public Observable<string> StartGame(ScriptableObject definition)
+    switch (node.NodeType)
     {
-        var settings = (SampleSentenceData)definition;
-        // 実際の実装では購読解除時にゲーム処理も停止してください。
-        return Observable.Return(SampleResult.Success.ToString());
+        case ScenarioNodeType.Scenario:
+            // node.ScenarioDefinitionを会話Sceneへ渡す。
+            break;
+
+        case ScenarioNodeType.Game:
+            // node.GameIdから遷移先を解決し、node.AttachedDataをゲームSceneへ渡す。
+            break;
     }
-}
-```
-
-既存のScriptableObjectを変更せず分岐を取り出したい場合は、次のようなResolverを作成してノードへ設定します。
-
-```csharp
-[CreateAssetMenu(menuName = "Scenario/Imported Data Resolver")]
-public sealed class ImportedDataResolver : ScenarioBranchResolver
-{
-    public override bool CanResolve(ScriptableObject data) => data is ImportedGameData;
-
-    public override IReadOnlyList<string> GetBranchNames(ScriptableObject data)
-    {
-        return ((ImportedGameData)data).branches;
-    }
-}
-```
-
-標準の `UnityScenarioGameSceneService` は購読時に登録シーンをAdditiveで読み込み、ロードしたシーンのルート以下から `IScenarioGame` を検索します。購読解除、ノード遷移、Reset、エラー時にはゲームシーンをアンロードします。
-
-## CSVシナリオ連携の例
-
-`Assets > Create > Scenario > Scenario Definition` でアセットを作り、CSVを設定します。エディタとRunnerはCSV本文を解析せず、ScenarioDefinitionを既存のシナリオシステムへ渡して終了だけをR3で受け取ります。
-
-```csharp
-using R3;
-using ScenarioGraphSystem;
-using UnityEngine;
-
-public sealed class SampleScenarioPlayer : IScenarioPlayer
-{
-    public Observable<Unit> Play(ScenarioDefinition definition)
-    {
-        // 既存シナリオシステムの「1回の再生」をObservableへ変換して返します。
-        // Observable.Createを使う場合、返すIDisposableで既存システムを停止します。
-        return existingScenarioSystem.PlayAsObservable(definition.Csv);
-    }
-}
-```
-
-起動側では依存を注入してRunnerを生成します。
-
-```csharp
-var gameSceneService = new UnityScenarioGameSceneService();
-var runner = new ScenarioGraphRunner(scenarioPlayer, gameSceneService);
-runner.OnNodeChanged.Subscribe(node => Debug.Log($"Node: {node.DisplayName}"));
-runner.OnError.Subscribe(message => Debug.LogError(message));
-runner.Start(graphAsset);
-// 終了時: runner.Dispose();
-```
-
-Runnerはノード遷移、Reset、エラー、完了、Disposeのたびに現在のシナリオ・Scene・ゲーム購読を解除します。各実装が複数回値を発行しても、最初の1回だけを受理します。同期的に値を発行するObservableでも、購読は遷移時に確実に破棄されます。
-
-ゲームSceneは`LoadSceneMode.Additive`で読み込まれるため、Runnerを配置したシナリオSceneは維持されます。次のゲームへ遷移するとき、Reset、Dispose、エラー時には現在のゲームSceneだけをアンロードします。ロードと`IScenarioGame`解決が完了すると、Runnerの`OnGameLoaded`（R3）が`StartGame`直前に1回発行されます。
-
-```csharp
-runner.OnGameLoaded.Subscribe(loaded =>
-{
-    Debug.Log($"Game loaded: {loaded.GameId}");
 });
+
+runner.OnCompleted.Subscribe(_ =>
+{
+    // 利用側がResult Sceneへ遷移する。
+});
+
+runner.Start(graphAsset);
 ```
 
-## Google SpreadsheetからのCSV更新
+Scenarioの正常終了時は次を呼びます。
 
-1. `Assets > Create > Scenario > Spreadsheet > Google Sheets Credential` でCredentialを作成します。
-2. APIキーは環境変数 `GOOGLE_SHEETS_API_KEY` に設定します。アセット内のFallback API Keyはローカル確認用です。
-3. `Assets > Create > Scenario > Spreadsheet > Import Profile` でImport Profileを作成します。
-4. Target Definition、Credential、Spreadsheet ID、Sheet GIDまたはシート名、セル範囲を設定します。
-5. Inspectorの「SpreadsheetからCSVを更新」を押します。
+```csharp
+runner.CompleteScenarioNode();
+```
 
-CSVはImport Profileで指定した同一パスへ上書きされます。このためTextAssetのGUIDは維持され、ScenarioDefinitionやグラフの参照は切れません。CSV取得・AssetDatabase操作はEditor専用であり、プレイヤー実行時はScenarioDefinitionに保存済みのTextAssetだけを使用します。
+ゲーム終了時は出力Portの`BranchName`と一致する結果名を渡します。
 
-セル中のカンマ、改行、ダブルクォートはCSV形式に従ってエスケープされます。Google Sheets APIが省略する行末の空セルは、取得結果の最大列数まで補完されます。
+```csharp
+runner.SubmitGameResult("Perfect");
+```
 
-## モックによるPlay Mode接続確認
+無効な分岐名、未接続Port、存在しないEdgeは`OnError`へ通知され、実行を停止します。実行中でない場合や現在ノードと異なる種類の完了通知は、多重完了対策として無視されます。
 
-シナリオノードとゲームノードには単体デバッグボタンがあります。ボタンはPlay Mode外でのみ実行できます。
-ゲームノードは登録済みのゲームSceneを読み込んでPlay Modeを開始し、設定済みのアタッチデータをそのSceneの`IScenarioGame`へ渡します。
-シナリオノードは現在開いているSceneでPlay Modeを開始し、`IScenarioGraphDebugHost`へ対象ノードを渡します。
-デモの`ScenarioGraphMockRunner`はこのインターフェースを実装済みです。
+## GameRegistry
 
-プロジェクトには全体接続確認用のモックを同梱しています。
+`Assets > Create > Scenario > Game Registry` でRegistryを作成します。ゲームごとの不変ID、表示名、Scene GUID/Pathを保持します。
 
-- Package Managerで`Scenario Graph Demo`をImportしてください。
-- Import先の`MockGameData.asset`はゲームノードに設定済みです。Inspectorの`Branches`リストへ任意の分岐名を入力でき、`Completion Result`にはそのリストの値が選択肢として表示されます。
-- Import先の`Scenes/game1.unity`と`game2.unity`には`MockScenarioGame`が配置済みです。利用プロジェクトのBuild Settingsへ追加してください。
-- Import先の`Scenes/SampleScene.unity`の`Scenario Graph Mock Runner`は、Play Mode開始時に`ScenarioGraph.asset`を実行します。
+RunnerはGame Registryを利用してグラフの妥当性を検証しますが、登録Sceneをロードしません。利用側のCoordinatorが`node.GameRegistry.TryGet(node.GameId, out registration)`で登録情報を取得し、任意のScene管理システムへ渡してください。
 
-Play Modeでは「開始 → BeforeGameシナリオ → game1 → Success/Failureシナリオ」までConsoleへ出力されます。初期設定は分岐先シナリオで停止し、`Scenario Graph Mock Runner`のコンテキストメニュー「現在のシナリオを完了」を実行すると終了ノードまで確認できます。
+## ノード単体デバッグ
+
+Graph Editorの単体デバッグはSceneを自動的に切り替えません。現在開いているSceneでPlay Modeを開始し、Scene内の`IScenarioGraphDebugHost`へ選択ノードを渡します。
+
+```csharp
+public sealed class ProjectDebugHost : MonoBehaviour, IScenarioGraphDebugHost
+{
+    public bool CanDebugNode(ScenarioGraph graph, NodeData node, out string reason)
+    {
+        reason = string.Empty;
+        return true;
+    }
+
+    public void DebugNode(ScenarioGraph graph, NodeData node)
+    {
+        // プロジェクト固有のSceneData生成、画面遷移、再生を行う。
+    }
+}
+```
+
+パッケージ同梱の`ScenarioGraphMockRunner`ではScene遷移を行わず、Context MenuからScenario完了またはGame結果送信を試せます。
 
 ## R3
 
-このパッケージはR3 DLLを同梱しません。導入前に次の順番で依存関係を準備してください。
-
-1. NuGetForUnityなどを使用して、NuGet `R3` 1.3.1をインストールします。推移依存も復元してください。
-2. Unity Package Managerで`com.cysharp.r3`（R3.Unity）1.3.1をインストールします。
-3. Unity Package Managerで`com.yourcompany.scenario-graph`をインストールします。
-
-Git URLからR3.Unityを導入する場合は、利用プロジェクトの`Packages/manifest.json`へ次を追加します。
+このパッケージはR3 DLLを同梱しません。R3コアとR3.Unity 1.3.1を利用プロジェクト側へ導入してください。
 
 ```json
 "com.cysharp.r3": "https://github.com/Cysharp/R3.git?path=src/R3.Unity/Assets/R3.Unity#1.3.1"
 ```
 
-R3コアはNuGet依存のため、Scenario Graphの`package.json`から自動導入できません。R3コアとR3.Unityは同じ1.3.1へ揃えてください。R3が見つからない場合は`R3`、`Observable`、`Unit`などの型解決エラーになります。ソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。
+R3のソースとライセンスは <https://github.com/Cysharp/R3> を参照してください。

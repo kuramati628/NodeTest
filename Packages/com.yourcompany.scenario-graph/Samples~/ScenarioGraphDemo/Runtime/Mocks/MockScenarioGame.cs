@@ -5,10 +5,10 @@ using UnityEngine;
 namespace ScenarioGraphSystem
 {
     /// <summary>
-    /// ゲームSceneへ配置するIScenarioGame実装モックです。
-    /// 渡されたMockGameDataの設定どおりに一度だけ終了通知を返します。
+    /// プロジェクト側のGameSceneEntryPointから利用できるゲーム実装モックです。
+    /// Scenario Graphパッケージ固有の実行インターフェースには依存しません。
     /// </summary>
-    public sealed class MockScenarioGame : MonoBehaviour, IScenarioGame
+    public sealed class MockScenarioGame : MonoBehaviour
     {
         [SerializeField] private string fallbackResult = "Cancelled";
         /// <summary>ゲーム設定に従い、指定時間後に終了結果を1回だけ発行します。</summary>

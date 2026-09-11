@@ -1,4 +1,3 @@
-using System;
 using System.Reflection;
 using NUnit.Framework;
 using R3;
@@ -25,70 +24,107 @@ namespace ScenarioGraphSystem.Tests
         }
 
         [Test]
-        public void ScenarioCompletion_AdvancesToEndAndDisposesPlayback()
+        public void Start_AnnouncesScenarioAndWaitsForExternalCompletion()
         {
-            var player = new TestScenarioPlayer();
-            graph = CreateScenarioGraph();
-            using var runner = new ScenarioGraphRunner(player, new TestSceneService());
+            graph = CreateScenarioGraph(out var scenario, out _);
+            using var runner = new ScenarioGraphRunner();
+            NodeData announced = null;
+            var completedCount = 0;
+            using var nodeSubscription = runner.OnNodeChanged.Subscribe(node => announced = node);
+            using var completedSubscription = runner.OnCompleted.Subscribe(_ => completedCount++);
+
+            runner.Start(graph);
+
+            Assert.That(announced, Is.SameAs(scenario));
+            Assert.That(runner.GetCurrentNode(), Is.SameAs(scenario));
+            Assert.That(runner.IsRunning, Is.True);
+            Assert.That(completedCount, Is.Zero);
+        }
+
+        [Test]
+        public void CompleteScenarioNode_AdvancesToEndAndCompletesOnce()
+        {
+            graph = CreateScenarioGraph(out _, out var end);
+            using var runner = new ScenarioGraphRunner();
             var completedCount = 0;
             using var subscription = runner.OnCompleted.Subscribe(_ => completedCount++);
 
             runner.Start(graph);
+            runner.CompleteScenarioNode();
+            runner.CompleteScenarioNode();
 
-            Assert.That(player.Subscribed, Is.True);
-            player.Complete();
             Assert.That(completedCount, Is.EqualTo(1));
-            Assert.That(player.Disposed, Is.True);
+            Assert.That(runner.GetCurrentNode(), Is.SameAs(end));
+            Assert.That(runner.IsRunning, Is.False);
         }
 
         [Test]
-        public void Reset_DisposesCurrentPlayback()
+        public void Reset_ClearsCurrentExecution()
         {
-            var player = new TestScenarioPlayer();
-            graph = CreateScenarioGraph();
-            using var runner = new ScenarioGraphRunner(player, new TestSceneService());
+            graph = CreateScenarioGraph(out _, out _);
+            using var runner = new ScenarioGraphRunner();
 
             runner.Start(graph);
             runner.Reset();
 
-            Assert.That(player.Disposed, Is.True);
             Assert.That(runner.GetCurrentNode(), Is.Null);
+            Assert.That(runner.IsRunning, Is.False);
         }
 
         [Test]
-        public void SynchronousGameResult_CompletesAndDisposesSceneLease()
+        public void SubmitGameResult_UsesMatchingBranchAndCompletes()
         {
-            var game = new TestGame();
-            var sceneService = new TestSceneService(game);
-            graph = CreateGameGraph();
-            using var runner = new ScenarioGraphRunner(new TestScenarioPlayer(), sceneService);
+            graph = CreateGameGraph(out var game, out var end);
+            using var runner = new ScenarioGraphRunner();
+            NodeData announced = null;
             var completedCount = 0;
-            using var subscription = runner.OnCompleted.Subscribe(_ => completedCount++);
+            using var nodeSubscription = runner.OnNodeChanged.Subscribe(node => announced = node);
+            using var completedSubscription = runner.OnCompleted.Subscribe(_ => completedCount++);
 
             runner.Start(graph);
+            Assert.That(announced, Is.SameAs(game));
+
+            runner.SubmitGameResult(nameof(TestGameResult.Success));
 
             Assert.That(completedCount, Is.EqualTo(1));
-            Assert.That(game.Started, Is.True);
-            Assert.That(sceneService.LeaseDisposed, Is.True);
+            Assert.That(runner.GetCurrentNode(), Is.SameAs(end));
         }
 
         [Test]
-        public void PlaybackError_IsForwardedAndDisposesPlayback()
+        public void SubmitGameResult_WithUnknownBranch_PublishesError()
         {
-            var player = new TestScenarioPlayer(new InvalidOperationException("test error"));
-            graph = CreateScenarioGraph();
-            using var runner = new ScenarioGraphRunner(player, new TestSceneService());
+            graph = CreateGameGraph(out _, out _);
+            using var runner = new ScenarioGraphRunner();
             string message = null;
             using var subscription = runner.OnError.Subscribe(value => message = value);
-            LogAssert.Expect(LogType.Error, "[ScenarioGraphRunner] シナリオ再生に失敗しました: test error");
+            LogAssert.Expect(LogType.Error,
+                "[ScenarioGraphRunner] ゲームからアタッチデータにない分岐『Missing』が返されました。");
 
             runner.Start(graph);
+            runner.SubmitGameResult("Missing");
 
-            Assert.That(message, Does.Contain("test error"));
-            Assert.That(player.Disposed, Is.True);
+            Assert.That(message, Does.Contain("Missing"));
+            Assert.That(runner.IsRunning, Is.False);
         }
 
-        private ScenarioGraph CreateScenarioGraph()
+        [Test]
+        public void StartAtNode_AnnouncesOnlyTargetAndCompletesWithoutFollowingEdge()
+        {
+            graph = CreateScenarioGraph(out var scenario, out _);
+            using var runner = new ScenarioGraphRunner();
+            NodeData announced = null;
+            var completedCount = 0;
+            using var nodeSubscription = runner.OnNodeChanged.Subscribe(node => announced = node);
+            using var completedSubscription = runner.OnCompleted.Subscribe(_ => completedCount++);
+
+            runner.StartAtNode(graph, scenario.Guid);
+            runner.CompleteScenarioNode();
+
+            Assert.That(announced, Is.SameAs(scenario));
+            Assert.That(completedCount, Is.EqualTo(1));
+        }
+
+        private ScenarioGraph CreateScenarioGraph(out NodeData scenario, out NodeData end)
         {
             definition = ScriptableObject.CreateInstance<ScenarioDefinition>();
             var serializedDefinition = new SerializedObject(definition);
@@ -97,8 +133,8 @@ namespace ScenarioGraphSystem.Tests
 
             var result = ScriptableObject.CreateInstance<ScenarioGraph>();
             var start = NodeData.Create(ScenarioNodeType.Start, Vector2.zero);
-            var scenario = NodeData.Create(ScenarioNodeType.Scenario, Vector2.right);
-            var end = NodeData.Create(ScenarioNodeType.End, Vector2.right * 2);
+            scenario = NodeData.Create(ScenarioNodeType.Scenario, Vector2.right);
+            end = NodeData.Create(ScenarioNodeType.End, Vector2.right * 2);
             scenario.ScenarioDefinition = definition;
             result.Nodes.Add(start);
             result.Nodes.Add(scenario);
@@ -109,7 +145,7 @@ namespace ScenarioGraphSystem.Tests
             return result;
         }
 
-        private ScenarioGraph CreateGameGraph()
+        private ScenarioGraph CreateGameGraph(out NodeData game, out NodeData end)
         {
             registry = ScriptableObject.CreateInstance<GameRegistry>();
             var registration = GameRegistration.Create();
@@ -119,8 +155,8 @@ namespace ScenarioGraphSystem.Tests
 
             var result = ScriptableObject.CreateInstance<ScenarioGraph>();
             var start = NodeData.Create(ScenarioNodeType.Start, Vector2.zero);
-            var game = NodeData.Create(ScenarioNodeType.Game, Vector2.right);
-            var end = NodeData.Create(ScenarioNodeType.End, Vector2.right * 2);
+            game = NodeData.Create(ScenarioNodeType.Game, Vector2.right);
+            end = NodeData.Create(ScenarioNodeType.End, Vector2.right * 2);
             game.GameRegistry = registry;
             game.GameId = registration.GameId;
             game.AttachedData = gameData;
@@ -143,79 +179,6 @@ namespace ScenarioGraphSystem.Tests
         {
             if (target != null)
                 UnityEngine.Object.DestroyImmediate(target);
-        }
-
-        private sealed class TestScenarioPlayer : IScenarioPlayer
-        {
-            private readonly Exception error;
-            private Observer<Unit> observer;
-
-            public TestScenarioPlayer(Exception error = null) => this.error = error;
-
-            public bool Subscribed { get; private set; }
-            public bool Disposed { get; private set; }
-
-            public Observable<Unit> Play(ScenarioDefinition target)
-            {
-                return Observable.Create<Unit>(value =>
-                {
-                    observer = value;
-                    Subscribed = true;
-                    if (error != null)
-                        value.OnCompleted(Result.Failure(error));
-                    return new CallbackDisposable(() => Disposed = true);
-                });
-            }
-
-            public void Complete()
-            {
-                observer.OnNext(Unit.Default);
-                observer.OnCompleted();
-            }
-        }
-
-        private sealed class TestSceneService : IScenarioGameSceneService
-        {
-            private readonly IScenarioGame game;
-
-            public TestSceneService(IScenarioGame game = null) => this.game = game;
-
-            public bool LeaseDisposed { get; private set; }
-
-            public Observable<IScenarioGame> LoadGame(SceneReference sceneReference)
-            {
-                return Observable.Create<IScenarioGame>(observer =>
-                {
-                    if (game != null)
-                        observer.OnNext(game);
-                    return new CallbackDisposable(() => LeaseDisposed = true);
-                });
-            }
-        }
-
-        private sealed class TestGame : IScenarioGame
-        {
-            public bool Started { get; private set; }
-
-            public Observable<string> StartGame(ScriptableObject target)
-            {
-                Started = true;
-                return Observable.Return(nameof(TestGameResult.Success));
-            }
-        }
-
-        private sealed class CallbackDisposable : IDisposable
-        {
-            private Action callback;
-
-            public CallbackDisposable(Action callback) => this.callback = callback;
-
-            public void Dispose()
-            {
-                var action = callback;
-                callback = null;
-                action?.Invoke();
-            }
         }
     }
 

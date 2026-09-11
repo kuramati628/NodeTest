@@ -5,35 +5,26 @@ using UnityEngine;
 
 namespace ScenarioGraphSystem
 {
-    /// <summary>アセットへ状態を書き込まず、シナリオグラフの実行状態と遷移を管理します。</summary>
+    /// <summary>
+    /// アセットへ状態を書き込まず、次に実行するノードの提示とグラフ上の分岐だけを管理します。
+    /// シナリオ再生、ゲーム実行、Scene遷移は呼び出し側の責務です。
+    /// </summary>
     public sealed class ScenarioGraphRunner : IDisposable
     {
-        private readonly IScenarioPlayer scenarioPlayer;
-        private readonly IScenarioGameSceneService gameSceneService;
         private readonly Subject<NodeData> nodeChanged = new();
         private readonly Subject<string> error = new();
-        private readonly Subject<ScenarioGameLoadedEvent> gameLoaded = new();
         private readonly Subject<Unit> completed = new();
-        private CompositeDisposable transitionSubscriptions = new();
         private ScenarioGraph graph;
         private NodeData currentNode;
         private bool running;
         private bool singleNodeDebug;
-        private int transitionVersion;
-
-        public ScenarioGraphRunner(IScenarioPlayer scenarioPlayer, IScenarioGameSceneService gameSceneService)
-        {
-            this.scenarioPlayer = scenarioPlayer;
-            this.gameSceneService = gameSceneService;
-        }
 
         public Observable<NodeData> OnNodeChanged => nodeChanged;
         public Observable<string> OnError => error;
         public Observable<Unit> OnCompleted => completed;
-        /// <summary>ゲームSceneのロードとゲーム実装解決が完了した直後に発行されます。</summary>
-        public Observable<ScenarioGameLoadedEvent> OnGameLoaded => gameLoaded;
+        public bool IsRunning => running;
 
-        /// <summary>グラフを開始ノードから実行します。検証エラーがある場合は開始しません。</summary>
+        /// <summary>グラフを開始ノードから開始し、最初の実行対象ノードを通知します。</summary>
         public void Start(ScenarioGraph targetGraph)
         {
             Reset();
@@ -49,7 +40,7 @@ namespace ScenarioGraphSystem
             EnterNode(GetStartNode());
         }
 
-        /// <summary>シナリオまたはゲームノードを、そのノードに設定されたデータだけで単体実行します。</summary>
+        /// <summary>シナリオまたはゲームノードを単体デバッグ対象として通知します。</summary>
         public void StartAtNode(ScenarioGraph targetGraph, string nodeGuid)
         {
             Reset();
@@ -69,10 +60,25 @@ namespace ScenarioGraphSystem
         /// <summary>現在設定されているグラフの開始ノードを返します。</summary>
         public NodeData GetStartNode() => graph != null ? graph.GetStartNode() : null;
 
-        /// <summary>現在実行中のノードを返します。</summary>
+        /// <summary>現在のノードを返します。完了直後はEndノードを返します。</summary>
         public NodeData GetCurrentNode() => currentNode;
 
-        /// <summary>ゲーム終了結果に対応する出力Edgeへ遷移します。</summary>
+        /// <summary>現在のシナリオノードが正常完了したものとして、単一の出力Edgeへ進みます。</summary>
+        public void CompleteScenarioNode()
+        {
+            if (!running || currentNode == null || currentNode.NodeType != ScenarioNodeType.Scenario)
+                return;
+
+            if (singleNodeDebug)
+            {
+                Complete();
+                return;
+            }
+
+            AdvanceSingleOutput(currentNode, "シナリオノードの出力が未接続です。");
+        }
+
+        /// <summary>現在のゲームノードから、結果名に対応する出力Edgeへ進みます。</summary>
         public void SubmitGameResult(string branchName)
         {
             if (!running || currentNode == null || currentNode.NodeType != ScenarioNodeType.Game)
@@ -119,22 +125,19 @@ namespace ScenarioGraphSystem
             EnterNode(graph.FindNode(edge.InputNodeGuid));
         }
 
-        /// <summary>実行状態を破棄し、購読・シナリオ再生・ゲームシーンを確実に解除します。</summary>
+        /// <summary>実行状態を破棄します。外部で実行中の処理は呼び出し側で停止してください。</summary>
         public void Reset()
         {
-            transitionVersion++;
             running = false;
             singleNodeDebug = false;
-            transitionSubscriptions.Dispose();
-            transitionSubscriptions = new CompositeDisposable();
             graph = null;
             currentNode = null;
         }
 
         private void EnterNode(NodeData node)
         {
-            transitionVersion++;
-            transitionSubscriptions.Clear();
+            if (!running)
+                return;
             if (node == null)
             {
                 Fail("遷移先ノードを解決できません。");
@@ -142,210 +145,22 @@ namespace ScenarioGraphSystem
             }
 
             currentNode = node;
-            nodeChanged.OnNext(node);
-            // 購読側が通知中にResetや手動遷移を行った場合、古いノードの処理を開始しません。
-            if (!running || currentNode != node)
-                return;
-
             switch (node.NodeType)
             {
                 case ScenarioNodeType.Start:
                     AdvanceSingleOutput(node, "開始ノードが未接続です。");
                     break;
                 case ScenarioNodeType.Scenario:
-                    StartScenario(node);
-                    break;
                 case ScenarioNodeType.Game:
-                    StartGame(node);
+                    nodeChanged.OnNext(node);
                     break;
                 case ScenarioNodeType.End:
                     Complete();
                     break;
+                default:
+                    Fail($"未対応のノード種別です: {node.NodeType}");
+                    break;
             }
-        }
-
-        private void StartScenario(NodeData node)
-        {
-            if (node.ScenarioDefinition == null || node.ScenarioDefinition.Csv == null || scenarioPlayer == null)
-            {
-                if (node.ScenarioDefinition == null)
-                    Fail("ScenarioDefinitionが未設定です。");
-                else if (node.ScenarioDefinition.Csv == null)
-                    Fail("ScenarioDefinitionにCSVが設定されていません。");
-                else
-                    Fail("IScenarioPlayerが設定されていません。");
-                return;
-            }
-
-            var version = transitionVersion;
-            Observable<Unit> play;
-            try
-            {
-                play = scenarioPlayer.Play(node.ScenarioDefinition);
-            }
-            catch (Exception exception)
-            {
-                Fail($"シナリオ開始に失敗しました: {exception.Message}");
-                return;
-            }
-            if (play == null)
-            {
-                Fail("IScenarioPlayer.PlayがObservableを返しませんでした。");
-                return;
-            }
-
-            var playSubscription = new DeferredDisposable();
-            playSubscription.AddTo(transitionSubscriptions);
-            var scenarioCompleted = false;
-            playSubscription.Set(play.Take(1).Subscribe(_ =>
-            {
-                scenarioCompleted = true;
-                if (running && version == transitionVersion)
-                {
-                    if (singleNodeDebug)
-                        Complete();
-                    else
-                        AdvanceSingleOutput(node, "シナリオノードの出力が未接続です。");
-                }
-            }, exception =>
-            {
-                if (running && version == transitionVersion)
-                    Fail($"シナリオ完了通知でエラーが発生しました: {exception.Message}");
-            }, result =>
-            {
-                if (!running || version != transitionVersion)
-                    return;
-                if (result.IsFailure)
-                    Fail($"シナリオ再生に失敗しました: {result.Exception.Message}");
-                else if (!scenarioCompleted)
-                    Fail("シナリオ再生が完了値を発行せず終了しました。");
-            }));
-
-        }
-
-        private void StartGame(NodeData node)
-        {
-            if (node.GameRegistry == null || !node.GameRegistry.TryGet(node.GameId, out var registration))
-            {
-                Fail("未解決のゲームIDです。");
-                return;
-            }
-            if (node.AttachedData == null)
-            {
-                Fail("アタッチデータが未設定です。");
-                return;
-            }
-            if (!ScenarioBranchResolverUtility.TryGetBranchNames(node.AttachedData, node.BranchResolver,
-                    out _, out var branchError))
-            {
-                Fail(branchError);
-                return;
-            }
-            if (registration.Scene == null || !registration.Scene.IsAssigned)
-            {
-                Fail($"ゲーム『{registration.DisplayName}』のシーンが未設定です。");
-                return;
-            }
-            if (gameSceneService == null)
-            {
-                Fail("IScenarioGameSceneServiceが設定されていません。");
-                return;
-            }
-
-            var version = transitionVersion;
-            Observable<IScenarioGame> load;
-            try
-            {
-                load = gameSceneService.LoadGame(registration.Scene);
-            }
-            catch (Exception exception)
-            {
-                Fail($"ゲームSceneロード開始に失敗しました: {exception.Message}");
-                return;
-            }
-            if (load == null)
-            {
-                Fail("IScenarioGameSceneService.LoadGameがObservableを返しませんでした。");
-                return;
-            }
-
-            var loaded = false;
-            var loadSubscription = new DeferredDisposable();
-            loadSubscription.AddTo(transitionSubscriptions);
-            loadSubscription.Set(load.Subscribe(game =>
-            {
-                if (loaded || !running || version != transitionVersion)
-                    return;
-                loaded = true;
-                if (game == null)
-                {
-                    Fail("ゲームSceneからIScenarioGameを解決できませんでした。");
-                    return;
-                }
-                try
-                {
-                    gameLoaded.OnNext(new ScenarioGameLoadedEvent(node.GameId, registration.Scene, game));
-                }
-                catch (Exception exception)
-                {
-                    Fail($"ゲームSceneロード通知でエラーが発生しました: {exception.Message}");
-                    return;
-                }
-                if (!running || version != transitionVersion)
-                    return;
-
-                Observable<string> play;
-                try
-                {
-                    play = game.StartGame(node.AttachedData);
-                }
-                catch (Exception exception)
-                {
-                    Fail($"ゲーム開始に失敗しました: {exception.Message}");
-                    return;
-                }
-                if (play == null)
-                {
-                    Fail("IScenarioGame.StartGameがObservableを返しませんでした。");
-                    return;
-                }
-
-                var gameSubscription = new DeferredDisposable();
-                gameSubscription.AddTo(transitionSubscriptions);
-                var gameCompleted = false;
-                gameSubscription.Set(play.Take(1).Subscribe(result =>
-                {
-                    gameCompleted = true;
-                    if (running && version == transitionVersion)
-                        SubmitGameResult(result);
-                }, exception =>
-                {
-                    if (running && version == transitionVersion)
-                        Fail($"ゲーム実行通知でエラーが発生しました: {exception.Message}");
-                }, result =>
-                {
-                    if (!running || version != transitionVersion)
-                        return;
-                    if (result.IsFailure)
-                        Fail($"ゲーム実行に失敗しました: {result.Exception.Message}");
-                    else if (!gameCompleted)
-                        Fail("ゲーム実行が分岐名を発行せず終了しました。");
-                }));
-            }, exception =>
-            {
-                if (running && version == transitionVersion)
-                    Fail(exception.Message);
-            }, result =>
-            {
-                if (!running || version != transitionVersion)
-                    return;
-                if (result.IsFailure)
-                    Fail(result.Exception.Message);
-                else
-                    Fail(loaded
-                        ? "ゲームScene購読がゲーム実行中に終了しました。"
-                        : "ゲームSceneロードがIScenarioGameを発行せず終了しました。");
-            }));
         }
 
         private void AdvanceSingleOutput(NodeData node, string message)
@@ -362,59 +177,26 @@ namespace ScenarioGraphSystem
         private void Fail(string message)
         {
             running = false;
-            transitionVersion++;
-            transitionSubscriptions.Clear();
+            singleNodeDebug = false;
             Debug.LogError($"[ScenarioGraphRunner] {message}");
             error.OnNext(message);
         }
 
         private void Complete()
         {
+            if (!running)
+                return;
             running = false;
             singleNodeDebug = false;
-            transitionVersion++;
-            transitionSubscriptions.Clear();
             completed.OnNext(Unit.Default);
         }
 
         public void Dispose()
         {
             Reset();
-            transitionSubscriptions.Dispose();
             nodeChanged.Dispose();
-            gameLoaded.Dispose();
             completed.Dispose();
             error.Dispose();
-        }
-
-        /// <summary>
-        /// 同期ObservableがSubscribe中にノード遷移しても、後から返る購読を確実にDisposeします。
-        /// </summary>
-        private sealed class DeferredDisposable : IDisposable
-        {
-            private IDisposable disposable;
-            private bool disposed;
-
-            public void Set(IDisposable value)
-            {
-                if (value == null)
-                    return;
-                if (disposed)
-                    value.Dispose();
-                else if (disposable == null)
-                    disposable = value;
-                else
-                    throw new InvalidOperationException("購読は一度だけ設定できます。");
-            }
-
-            public void Dispose()
-            {
-                if (disposed)
-                    return;
-                disposed = true;
-                disposable?.Dispose();
-                disposable = null;
-            }
         }
     }
 }

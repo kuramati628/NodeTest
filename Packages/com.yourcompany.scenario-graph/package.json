@@ -1,8 +1,8 @@
 {
   "name": "com.yourcompany.scenario-graph",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "displayName": "Scenario Graph",
-  "description": "GraphViewベースのシナリオ・ゲーム進行グラフ編集とRuntime実行機構です。",
+  "description": "GraphViewベースのシナリオ・ゲーム進行グラフ編集と、外部実行ホストから制御できるRuntime状態機械です。",
   "unity": "6000.0",
   "keywords": [
     "scenario",

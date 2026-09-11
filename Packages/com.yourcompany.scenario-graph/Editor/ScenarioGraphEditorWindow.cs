@@ -1,14 +1,11 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using R3;
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEditor.Experimental.GraphView;
 using UnityEditor.SceneManagement;
 using UnityEditor.UIElements;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
 namespace ScenarioGraphSystem.Editor
@@ -228,8 +225,6 @@ namespace ScenarioGraphSystem.Editor
         private const string PendingKey = "ScenarioGraph.NodeDebug.Pending";
         private const string GraphPathKey = "ScenarioGraph.NodeDebug.GraphPath";
         private const string NodeGuidKey = "ScenarioGraph.NodeDebug.NodeGuid";
-        private static IDisposable gameDebugSubscription;
-
         static ScenarioGraphNodeDebugSession()
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
@@ -252,9 +247,6 @@ namespace ScenarioGraphSystem.Editor
                 return;
             }
 
-            var scenePath = ResolveScenePath(node);
-            if (string.IsNullOrEmpty(scenePath))
-                return;
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
                 return;
 
@@ -262,29 +254,7 @@ namespace ScenarioGraphSystem.Editor
             SessionState.SetString(NodeGuidKey, node.Guid);
             SessionState.SetBool(PendingKey, true);
 
-            if (SceneManager.GetActiveScene().path != scenePath)
-                EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
             EditorApplication.isPlaying = true;
-        }
-
-        private static string ResolveScenePath(NodeData node)
-        {
-            if (node.NodeType == ScenarioNodeType.Scenario)
-            {
-                var path = SceneManager.GetActiveScene().path;
-                if (string.IsNullOrEmpty(path))
-                    EditorUtility.DisplayDialog("ノードデバッグ", "シナリオをデバッグするSceneを保存してから実行してください。", "OK");
-                return path;
-            }
-
-            if (node.NodeType != ScenarioNodeType.Game || node.GameRegistry == null ||
-                !node.GameRegistry.TryGet(node.GameId, out var registration) || registration.Scene == null ||
-                !registration.Scene.IsAssigned)
-            {
-                EditorUtility.DisplayDialog("ノードデバッグ", "ゲームノードに有効なゲームSceneを設定してください。", "OK");
-                return string.Empty;
-            }
-            return registration.Scene.ScenePath;
         }
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
@@ -293,8 +263,6 @@ namespace ScenarioGraphSystem.Editor
                 EditorApplication.delayCall += ExecutePending;
             else if (state == PlayModeStateChange.EnteredEditMode)
             {
-                gameDebugSubscription?.Dispose();
-                gameDebugSubscription = null;
                 ClearPending();
             }
         }
@@ -316,44 +284,9 @@ namespace ScenarioGraphSystem.Editor
                 return;
             }
 
-            if (node.NodeType == ScenarioNodeType.Game)
-            {
-                var game = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include)
-                    .OfType<IScenarioGame>()
-                    .FirstOrDefault();
-                if (game == null)
-                {
-                    Debug.LogError("[ScenarioGraph] 読み込んだゲームSceneにIScenarioGameがありません。");
-                    return;
-                }
-
-                try
-                {
-                    gameDebugSubscription?.Dispose();
-                    var play = game.StartGame(node.AttachedData);
-                    if (play == null)
-                    {
-                        Debug.LogError("[ScenarioGraph] IScenarioGame.StartGameがObservableを返しませんでした。");
-                        return;
-                    }
-                    gameDebugSubscription = play.Take(1).Subscribe(
-                        result => Debug.Log($"[ScenarioGraph] ゲームデバッグ完了: {result}"),
-                        exception => Debug.LogError($"[ScenarioGraph] ゲームデバッグ通知でエラーが発生しました: {exception.Message}"),
-                        result =>
-                        {
-                            if (result.IsFailure)
-                                Debug.LogError($"[ScenarioGraph] ゲームデバッグに失敗しました: {result.Exception.Message}");
-                        });
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogError($"[ScenarioGraph] ゲームデバッグの開始に失敗しました: {exception.Message}");
-                }
-                return;
-            }
-
             var reason = "読み込んだSceneにIScenarioGraphDebugHostがありません。";
-            foreach (var host in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include)
+            foreach (var host in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None)
                          .OfType<IScenarioGraphDebugHost>())
             {
                 if (!host.CanDebugNode(graph, node, out reason))
@@ -361,7 +294,7 @@ namespace ScenarioGraphSystem.Editor
                 host.DebugNode(graph, node);
                 return;
             }
-            Debug.LogError($"[ScenarioGraph] シナリオデバッグを開始できません: {reason}");
+            Debug.LogError($"[ScenarioGraph] ノードデバッグを開始できません: {reason}");
         }
 
         private static void ClearPending()
