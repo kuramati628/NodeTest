@@ -29,7 +29,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             }
 
             EditorGUILayout.HelpBox(
-                "除外シート以外をすべて取得し、Spreadsheet名/CSVとSpreadsheet名/Assetへ分けて生成します。DefineLabelごとにSheet名-Nブロックを作り、直前のGoToGameはCSVから除外します。Gameノードと接続は手動設定し、ImporterはLabel内のjump Edgeだけを同期します。",
+                "除外シート以外を取得し、Spreadsheet名/CSVとSpreadsheet名/Assetへ分けて生成します。先頭LabelとDefineLabel内の各Labelを独立したScenarioにし、制御行はCSVから除外します。jumpは同じSpreadsheet内のLabelへ接続します。GoToGame区間とGameノードの接続は手動設定です。",
                 MessageType.Info);
         }
 

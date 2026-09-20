@@ -33,9 +33,16 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             {
                 var output = outputs[index];
                 var ownerTag = ownerPrefix + output.StableKey;
+                var previousMainTag = output.BlockNumber == 0 && !string.IsNullOrEmpty(output.Label)
+                    ? ownerPrefix + $"{profile.SpreadsheetId}:{output.SheetId}:1:@main"
+                    : string.Empty;
                 var node = graph.Nodes.FirstOrDefault(candidate =>
                                candidate.NodeType == ScenarioNodeType.Scenario &&
                                candidate.Metadata.Tags.Contains(ownerTag))
+                           ?? graph.Nodes.FirstOrDefault(candidate =>
+                               candidate.NodeType == ScenarioNodeType.Scenario &&
+                               !string.IsNullOrEmpty(previousMainTag) &&
+                               candidate.Metadata.Tags.Contains(previousMainTag))
                            ?? graph.Nodes.FirstOrDefault(candidate =>
                                candidate.NodeType == ScenarioNodeType.Scenario &&
                                candidate.ScenarioDefinition == output.Definition);

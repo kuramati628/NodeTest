@@ -93,7 +93,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             return string.Empty;
         }
 
-        private static List<GeneratedScenarioSection> BuildOutputs(
+        internal static List<GeneratedScenarioSection> BuildOutputs(
             ScenarioSpreadsheetImportProfile profile,
             GoogleSpreadsheetData spreadsheet)
         {
@@ -104,10 +104,10 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 if (!HasOutputRows(sheet?.values))
                     continue;
 
-                if (!ScenarioLabelSplitter.HasDefinition(sheet))
+                if (!ScenarioLabelSplitter.HasDefinition(sheet) && !ScenarioLabelSplitter.HasLabel(sheet))
                 {
                     AddOutput(
-                        profile, spreadsheet, sheet, 0, string.Empty, string.Empty, string.Empty,
+                        profile, spreadsheet, sheet, 0, string.Empty, string.Empty, string.Empty, string.Empty,
                         false, ScenarioCsvSerializer.Serialize(sheet.values), outputs, usedPaths);
                     continue;
                 }
@@ -115,11 +115,11 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 var blocks = ScenarioLabelSplitter.SplitBlocks(sheet);
                 foreach (var block in blocks)
                 {
-                    var blockName = $"{sheet.title}-{block.BlockNumber}";
+                    var blockName = block.BlockNumber == 0 ? string.Empty : $"{sheet.title}-{block.BlockNumber}";
                     if (block.PrefixRows.Count > 0)
                     {
                         AddOutput(
-                            profile, spreadsheet, sheet, block.BlockNumber, blockName, string.Empty, string.Empty,
+                            profile, spreadsheet, sheet, block.BlockNumber, blockName, string.Empty, string.Empty, string.Empty,
                             false, ScenarioCsvSerializer.Serialize(block.PrefixRows.ToArray()), outputs, usedPaths);
                     }
 
@@ -130,17 +130,31 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                         if (string.IsNullOrEmpty(csv))
                             throw new InvalidOperationException($"シート『{sheet.title}』のLabel『{section.Label}』に出力可能なシナリオ命令がありません。");
 
-                        var targetLabel = !string.IsNullOrEmpty(section.JumpTarget)
-                            ? section.JumpTarget
-                            : index + 1 < block.Sections.Count ? block.Sections[index + 1].Label : string.Empty;
-                        var targetKey = string.IsNullOrEmpty(targetLabel)
+                        var nextLabel = string.IsNullOrEmpty(section.JumpTarget) &&
+                                        !section.EndsWithEnd && !section.EndsWithGoToGame &&
+                                        index + 1 < block.Sections.Count
+                            ? block.Sections[index + 1].Label : string.Empty;
+                        var targetKey = string.IsNullOrEmpty(nextLabel)
                             ? string.Empty
-                            : BuildStableKey(spreadsheet.spreadsheetId, sheet.sheetId, block.BlockNumber, targetLabel);
+                            : BuildStableKey(spreadsheet.spreadsheetId, sheet.sheetId, block.BlockNumber, nextLabel);
                         AddOutput(
-                            profile, spreadsheet, sheet, block.BlockNumber, blockName, section.Label, targetKey,
+                            profile, spreadsheet, sheet, block.BlockNumber, blockName, section.Label,
+                            section.JumpTarget, targetKey,
                             section.EndsWithGoToGame, csv, outputs, usedPaths);
                     }
                 }
+            }
+            var labels = new Dictionary<string, GeneratedScenarioSection>(StringComparer.Ordinal);
+            foreach (var output in outputs.Where(output => !string.IsNullOrEmpty(output.Label)))
+            {
+                if (!labels.TryAdd(output.Label, output))
+                    throw new InvalidOperationException($"Label『{output.Label}』がSpreadsheet内で重複しています。");
+            }
+            foreach (var output in outputs.Where(output => !string.IsNullOrEmpty(output.JumpTarget)))
+            {
+                if (!labels.TryGetValue(output.JumpTarget, out var target))
+                    throw new InvalidOperationException($"シート『{output.SheetName}』のjump先『{output.JumpTarget}』がインポート対象にありません。");
+                output.TransitionTargetKey = target.StableKey;
             }
             return outputs;
         }
@@ -152,6 +166,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             int blockNumber,
             string blockName,
             string label,
+            string jumpTarget,
             string transitionTargetKey,
             bool manualGameTransition,
             string csv,
@@ -174,6 +189,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 blockNumber,
                 blockName,
                 label,
+                jumpTarget,
                 transitionTargetKey,
                 manualGameTransition,
                 paths.CsvPath,
@@ -250,6 +266,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 int blockNumber,
                 string blockName,
                 string label,
+                string jumpTarget,
                 string transitionTargetKey,
                 bool manualGameTransition,
                 string csvPath,
@@ -262,6 +279,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 BlockNumber = blockNumber;
                 BlockName = blockName;
                 Label = label;
+                JumpTarget = jumpTarget;
                 TransitionTargetKey = transitionTargetKey;
                 ManualGameTransition = manualGameTransition;
                 CsvPath = csvPath;
@@ -275,10 +293,11 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             public int BlockNumber { get; }
             public string BlockName { get; }
             public string Label { get; }
+            public string JumpTarget { get; }
             public string DisplayName => string.IsNullOrEmpty(Label)
                 ? string.IsNullOrEmpty(BlockName) ? SheetName : BlockName
                 : string.IsNullOrEmpty(BlockName) ? Label : $"{BlockName}/{Label}";
-            public string TransitionTargetKey { get; }
+            public string TransitionTargetKey { get; set; }
             public bool ManualGameTransition { get; }
             public string CsvPath { get; }
             public string DefinitionPath { get; }

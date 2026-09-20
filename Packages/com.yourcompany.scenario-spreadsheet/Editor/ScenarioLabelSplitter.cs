@@ -15,6 +15,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
         public List<string[]> Rows { get; } = new();
         public string JumpTarget { get; set; } = string.Empty;
         public bool EndsWithGoToGame { get; set; }
+        public bool EndsWithEnd { get; set; }
     }
 
     internal sealed class ScenarioLabelBlock
@@ -31,7 +32,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
     }
 
     /// <summary>
-    /// DefineLabel/Label/jumpをSpreadsheetの行から取り除き、Graphの1シナリオに対応する単位へ分割します。
+    /// 先頭LabelとDefineLabel内のLabelを区間へ分割し、制御行をCSVから除きます。
     /// </summary>
     internal static class ScenarioLabelSplitter
     {
@@ -39,6 +40,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
         private const string LabelCommand = "Label";
         private const string JumpCommand = "jump";
         private const string GoToGameCommand = "GoToGame";
+        private const string EndCommand = "End";
         private const int CommandColumnIndex = 1;
         private const int ValueColumnIndex = 2;
 
@@ -46,7 +48,11 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
             => (sheetData?.values ?? Array.Empty<string[]>()).Any(row =>
                 string.Equals(GetCell(row, CommandColumnIndex), DefineLabelCommand, StringComparison.Ordinal));
 
-        /// <summary>DefineLabelごとに、直前シナリオとLabel区間を1つの分岐ブロックへ変換します。</summary>
+        public static bool HasLabel(GoogleSheetData sheetData)
+            => (sheetData?.values ?? Array.Empty<string[]>()).Any(row =>
+                string.Equals(GetCell(row, CommandColumnIndex), LabelCommand, StringComparison.Ordinal));
+
+        /// <summary>先頭LabelとDefineLabelごとの分岐区間をブロックへ変換します。</summary>
         public static IReadOnlyList<ScenarioLabelBlock> SplitBlocks(GoogleSheetData sheetData)
         {
             var rows = sheetData?.values ?? Array.Empty<string[]>();
@@ -74,7 +80,8 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                     {
                         if (!waitingForNextDefinition)
                             throw new InvalidOperationException($"次のDefineLabel直前にGoToGameがありません（{FormatRow(rowIndex)}）。");
-                        ValidateDeclaredSections(declaredLabels, sectionsByLabel);
+                        if (currentBlock.BlockNumber != 0)
+                            ValidateDeclaredSections(declaredLabels, sectionsByLabel);
                         prefix = Array.Empty<string[]>();
                     }
                     else
@@ -85,7 +92,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                     declaredLabels = ReadDeclaredLabels(row, rowIndex);
                     declaredSet = new HashSet<string>(declaredLabels, StringComparer.Ordinal);
                     sectionsByLabel = new Dictionary<string, ScenarioLabelSection>(StringComparer.Ordinal);
-                    currentBlock = new ScenarioLabelBlock(blocks.Count + 1, prefix);
+                    currentBlock = new ScenarioLabelBlock(blocks.Count(block => block.BlockNumber > 0) + 1, prefix);
                     blocks.Add(currentBlock);
                     currentSection = null;
                     jumpRowIndex = -1;
@@ -95,8 +102,17 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
 
                 if (currentBlock == null)
                 {
-                    if (string.Equals(command, LabelCommand, StringComparison.Ordinal) ||
-                        string.Equals(command, JumpCommand, StringComparison.Ordinal))
+                    if (string.Equals(command, LabelCommand, StringComparison.Ordinal))
+                    {
+                        if (initialPrefix.Count > 0)
+                            throw new InvalidOperationException($"先頭Labelより前に命令があります（{FormatRow(rowIndex)}）。");
+                        currentBlock = new ScenarioLabelBlock(0, Array.Empty<string[]>());
+                        blocks.Add(currentBlock);
+                        currentSection = new ScenarioLabelSection(RequireSingleValue(row, rowIndex, LabelCommand));
+                        currentBlock.Sections.Add(currentSection);
+                        continue;
+                    }
+                    if (string.Equals(command, JumpCommand, StringComparison.Ordinal))
                     {
                         throw new InvalidOperationException($"DefineLabelブロック外に{command}があります（{FormatRow(rowIndex)}）。");
                     }
@@ -109,6 +125,8 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
 
                 if (string.Equals(command, LabelCommand, StringComparison.Ordinal))
                 {
+                    if (currentBlock.BlockNumber == 0)
+                        throw new InvalidOperationException($"先頭Label区間に複数のLabelがあります（{FormatRow(rowIndex)}）。");
                     var label = RequireSingleValue(row, rowIndex, LabelCommand);
                     if (!declaredSet.Contains(label))
                         throw new InvalidOperationException($"宣言されていないLabel『{label}』があります（{FormatRow(rowIndex)}）。");
@@ -129,7 +147,8 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                         $"jumpの後に実行可能な行があります（{FormatRow(jumpRowIndex)} → {FormatRow(rowIndex)}）。jumpはLabel区間の末尾に置いてください。");
                 if (string.Equals(command, GoToGameCommand, StringComparison.Ordinal))
                 {
-                    ValidateDeclaredSections(declaredLabels, sectionsByLabel);
+                    if (currentBlock.BlockNumber != 0)
+                        ValidateDeclaredSections(declaredLabels, sectionsByLabel);
                     currentSection.EndsWithGoToGame = true;
                     waitingForNextDefinition = true;
                     currentSection = null;
@@ -140,18 +159,20 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 if (string.Equals(command, JumpCommand, StringComparison.Ordinal))
                 {
                     var target = RequireSingleValue(row, rowIndex, JumpCommand);
-                    if (!declaredSet.Contains(target))
-                        throw new InvalidOperationException($"jump先『{target}』が同じDefineLabelで宣言されていません（{FormatRow(rowIndex)}）。");
                     currentSection.JumpTarget = target;
                     jumpRowIndex = rowIndex;
                     continue;
                 }
 
                 currentSection.Rows.Add((string[])row.Clone());
+                currentSection.EndsWithEnd = string.Equals(command, EndCommand, StringComparison.Ordinal);
             }
 
             if (currentBlock != null)
-                ValidateDeclaredSections(declaredLabels, sectionsByLabel);
+            {
+                if (currentBlock.BlockNumber != 0)
+                    ValidateDeclaredSections(declaredLabels, sectionsByLabel);
+            }
             if (blocks.Count == 0)
                 throw new InvalidOperationException("DefineLabel行が見つかりません。");
             if (waitingForNextDefinition)
@@ -208,8 +229,6 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet
                 if (string.Equals(command, JumpCommand, StringComparison.Ordinal))
                 {
                     var target = RequireSingleValue(row, rowIndex, JumpCommand);
-                    if (!declaredSet.Contains(target))
-                        throw new InvalidOperationException($"jump先『{target}』がDefineLabelで宣言されていません（{FormatRow(rowIndex)}）。");
                     current.JumpTarget = target;
                     jumpRowIndex = rowIndex;
                     continue;

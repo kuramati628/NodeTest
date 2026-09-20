@@ -59,6 +59,29 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
         }
 
         [Test]
+        public void SplitBlocks_CreatesLeadingLabelSectionBeforeFirstDefinition()
+        {
+            var source = Sheet(
+                Row("", "Label", "1-1", "1-1"),
+                Row("", "Text", "Doctor", "opening"),
+                Row("", "GoToGame"),
+                Row("", "DefineLabel", "", "1-2"),
+                Row("", "Label", "1-2", "1-2"),
+                Row("", "Text", "Doctor", "result"),
+                Row("", "jump", "2-1"));
+
+            var blocks = ScenarioLabelSplitter.SplitBlocks(source);
+
+            Assert.That(blocks.Count, Is.EqualTo(2));
+            Assert.That(blocks[0].BlockNumber, Is.Zero);
+            Assert.That(blocks[0].Sections[0].Label, Is.EqualTo("1-1"));
+            Assert.That(blocks[0].Sections[0].EndsWithGoToGame, Is.True);
+            CollectionAssert.AreEqual(new[] { "Text" }, blocks[0].Sections[0].Rows.Select(row => row[1]));
+            Assert.That(blocks[1].BlockNumber, Is.EqualTo(1));
+            Assert.That(blocks[1].Sections[0].JumpTarget, Is.EqualTo("2-1"));
+        }
+
+        [Test]
         public void SplitBlocks_RejectsNextDefinitionWithoutPreviousGoToGame()
         {
             var source = Sheet(
@@ -125,7 +148,7 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
         }
 
         [Test]
-        public void Split_RejectsUndefinedJumpTarget()
+        public void Split_RetainsExternalJumpTargetForSpreadsheetResolution()
         {
             var source = Sheet(
                 Row("", "DefineLabel", "", "Success"),
@@ -133,8 +156,8 @@ namespace ScenarioGraphSystem.Editor.Spreadsheet.Tests
                 Row("", "Text", "Player", "text"),
                 Row("", "jump", "Missing"));
 
-            var exception = Assert.Throws<InvalidOperationException>(() => ScenarioLabelSplitter.Split(source));
-            StringAssert.Contains("DefineLabel", exception.Message);
+            var sections = ScenarioLabelSplitter.Split(source);
+            Assert.That(sections[0].JumpTarget, Is.EqualTo("Missing"));
         }
 
         [Test]
